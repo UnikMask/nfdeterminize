@@ -46,6 +46,10 @@ impl FrontierController {
             counter: 0,
         }
     }
+
+    pub fn size(&self) -> usize {
+        return self.counter;
+    }
 }
 
 impl NodeTrie {
@@ -100,14 +104,16 @@ impl NodeTrie {
     pub fn get_addr(&mut self, seq: &Seq, controller: &mut FrontierController) -> Option<usize> {
         match seq {
             Seq::Nil => {
-                if let Some(address) = self.state_num {
-                    return Some(address);
-                } else if let None = self.state_num {
-                    let address = controller.counter - 1;
-                    self.state_num = Some(address);
-                    controller.counter += 1;
-                    return Some(address);
-                }
+                let address: usize = match self.state_num {
+                    Some(address) => address,
+                    None => {
+                        let address = controller.counter - 1;
+                        self.state_num = Some(address);
+                        controller.counter += 1;
+                        address
+                    }
+                };
+                return Some(address);
             }
             Seq::Cons(next, rest) => match self.children.get_mut(&next) {
                 Some(child) => {
