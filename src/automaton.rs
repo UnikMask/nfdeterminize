@@ -158,16 +158,6 @@ impl Automaton {
         if let AutomatonType::Det = self.automaton_type {
             return self;
         }
-        // Get vector with all accept states removed.
-        let mut pk: Vec<Vec<usize>> = Vec::new();
-        let mut last = 0;
-        pk.push(Vec::new());
-        for end in &self.end {
-            pk[0].append(&mut (last..*end).collect());
-            last = end + 1;
-        }
-        pk[0].append(&mut (last..self.size).collect());
-        pk.push(self.end.clone());
 
         return Automaton {
             automaton_type: AutomatonType::Det,
@@ -179,38 +169,46 @@ impl Automaton {
         };
     }
 
-    fn hopcroft_step(&self, p: &Vec<Vec<usize>>) -> Vec<Vec<usize>> {
-        let mut p_next: Vec<Vec<usize>> = Vec::new();
+    fn hopcroft_algo(&self) -> Vec<HashSet<usize>> {
+        let finals: HashSet<usize> = self.end.clone().into_iter().collect();
+
+        // Get sets of all non-finals and finals.
+        let mut p: Vec<HashSet<usize>> = vec![
+            (0..self.size)
+                .collect::<HashSet<usize>>()
+                .difference(&finals)
+                .cloned()
+                .collect::<HashSet<usize>>(),
+            finals,
+        ];
+        let mut p_frontier: Vec<HashSet<usize>> = Vec::new();
 
         // Get transition map for efficiency
         let map = self.get_transition_map();
 
-        // Iterate for each set
-        for i in 0..p.len() {
-            let set = match p.get(i) {
+        // Iterate until the partition frontier is empty
+        loop {
+            let set = match p_frontier.pop() {
                 Some(s) => s,
                 None => break,
             };
 
-            // Iterate over each pair of the set
-            for j in 0..set.len() - 1 {
-                for k in j + 1..set.len() {
-                    let mut distinguish = false;
-                    for s in 0..self.alphabet {
-                        if get_set(map[&(set[j], s)], p) != get_set(map[&(set[k], s)], p) {
-                            distinguish = true;
-                            break;
-                        }
-                    }
+            // Iterate over each pair of the set for each symbol
+            for c in 0..self.alphabet {
+                let rs = self.reverse_transition(&set, c);
 
-                    if distinguish {
-                        // Let j and k into 2 different sets
-                    }
+                // Get set in p for which there are distinguished elements - (Some transitions go to set A and some not)
+                let distinguished = (&p).into_iter().filter(|r| {
+                    r.intersection(&rs).next() != None && r.difference(&rs).next() != None
+                });
+                for r in distinguished {
+                    let r0 = r.intersection(&rs).cloned().collect::<HashSet<usize>>();
+                    let r1 = r.difference(&rs).cloned().collect::<HashSet<usize>>();
                 }
             }
         }
 
-        return p_next;
+        return p;
     }
 
     fn get_transition_map(&self) -> HashMap<(usize, usize), usize> {
@@ -222,19 +220,9 @@ impl Automaton {
 
         return map;
     }
-}
-
-fn get_set(state: usize, p: &Vec<Vec<usize>>) -> Option<usize> {
-    // Iterate for each set
-    for i in 0..p.len() {
-        for s in match p.get(i) {
-            Some(s) => s,
-            None => break,
-        } {
-            if state == *s {
-                return Some(i);
-            }
-        }
+    fn reverse_transition(&self, set: &HashSet<usize>, c: usize) -> HashSet<usize> {
+        return (0..self.size)
+            .filter(|i| set.contains(&self.get_transition_map()[&(*i, c)]))
+            .collect();
     }
-    return None;
 }
