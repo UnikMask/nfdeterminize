@@ -159,51 +159,108 @@ impl Automaton {
             return self;
         }
 
+        let p = self.hopcroft_algo();
+
         return Automaton {
             automaton_type: AutomatonType::Det,
-            size: self.size,
+            size: p.len(),
             alphabet: self.alphabet,
-            table: Vec::new(),
-            start: Vec::new(),
-            end: Vec::new(),
+            table: self
+                .table
+                .into_iter()
+                .map(|t| (get_set(p, t.0), t.1, get_set(p, t.2)))
+                .collect::<HashSet<&(usize, usize, usize)>>()
+                .into_iter()
+                .cloned()
+                .collect::<Vec<(usize, usize, usize)>>(),
+            start: self
+                .start
+                .into_iter()
+                .map(|s| get_set(p, s))
+                .collect::<HashSet<&usize>>()
+                .into_iter()
+                .cloned()
+                .collect::<Vec<usize>>(),
+            start: self
+                .end
+                .into_iter()
+                .map(|s| get_set(p, s))
+                .collect::<HashSet<&usize>>()
+                .into_iter()
+                .cloned()
+                .collect::<Vec<usize>>(),
         };
     }
 
-    fn hopcroft_algo(&self) -> Vec<HashSet<usize>> {
+    fn hopcroft_algo(&self) -> VecDeque<HashSet<usize>> {
         let finals: HashSet<usize> = self.end.clone().into_iter().collect();
 
         // Get sets of all non-finals and finals.
-        let mut p: Vec<HashSet<usize>> = vec![
+        let mut p: VecDeque<HashSet<usize>> = VecDeque::from_iter(vec![
             (0..self.size)
                 .collect::<HashSet<usize>>()
                 .difference(&finals)
                 .cloned()
                 .collect::<HashSet<usize>>(),
-            finals,
-        ];
-        let mut p_frontier: Vec<HashSet<usize>> = Vec::new();
+            finals.clone(),
+        ]);
+
+        let mut p_frontier: VecDeque<HashSet<usize>> = VecDeque::from_iter(vec![
+            (0..self.size)
+                .collect::<HashSet<usize>>()
+                .difference(&finals)
+                .cloned()
+                .collect::<HashSet<usize>>(),
+            finals.clone(),
+        ]);
 
         // Get transition map for efficiency
         let map = self.get_transition_map();
 
         // Iterate until the partition frontier is empty
         loop {
-            let set = match p_frontier.pop() {
+            // Get a new set from the frontier and break if the frontier's empty
+            let set = match p_frontier.pop_front() {
                 Some(s) => s,
                 None => break,
             };
 
-            // Iterate over each pair of the set for each symbol
+            // Iterate over each input symbol
             for c in 0..self.alphabet {
                 let rs = self.reverse_transition(&set, c);
 
-                // Get set in p for which there are distinguished elements - (Some transitions go to set A and some not)
-                let distinguished = (&p).into_iter().filter(|r| {
-                    r.intersection(&rs).next() != None && r.difference(&rs).next() != None
-                });
-                for r in distinguished {
-                    let r0 = r.intersection(&rs).cloned().collect::<HashSet<usize>>();
-                    let r1 = r.difference(&rs).cloned().collect::<HashSet<usize>>();
+                // Loop through all sets in P.
+                let len = p.len();
+                for _ in 0..len {
+                    let r = match p.pop_front() {
+                        Some(set) => set,
+                        None => break,
+                    };
+
+                    if r.intersection(&rs).next() != None && r.difference(&rs).next() != None {
+                        // Get sets of intersections and differences
+                        let r0 = r.intersection(&rs).cloned().collect::<HashSet<usize>>();
+                        let r1 = r.difference(&rs).cloned().collect::<HashSet<usize>>();
+
+                        p.push_back(r0.clone());
+                        p.push_back(r1.clone());
+
+                        // Replace r with r0 and r1 if r is in frontier
+                        if !partition_replace(
+                            &mut p_frontier,
+                            &r,
+                            &mut vec![r1.clone(), r0.clone()],
+                        ) {
+                            // Add to frontier whichever of r0 or r1 is the smallest
+                            if r0.len() <= r1.len() {
+                                p_frontier.push_back(r0);
+                            } else {
+                                p_frontier.push_back(r1);
+                            }
+                        }
+                    } else {
+                        p.push_back(r);
+                    }
                 }
             }
         }
@@ -225,4 +282,31 @@ impl Automaton {
             .filter(|i| set.contains(&self.get_transition_map()[&(*i, c)]))
             .collect();
     }
+}
+
+// Check if a set is contained in a set in a partition.
+fn partition_replace(
+    p: &mut VecDeque<HashSet<usize>>,
+    replaced: &HashSet<usize>,
+    replacements: &mut Vec<HashSet<usize>>,
+) -> bool {
+    let p_len = p.len();
+    for _ in 0..p_len {
+        let next = match p.pop_front() {
+            Some(next) => next,
+            None => break,
+        };
+        if replaced.difference(&next).next() == None {
+            loop {
+                p.push_back(match replacements.pop() {
+                    Some(r) => r,
+                    None => break,
+                });
+                return true;
+            }
+        } else {
+            p.push_back(next);
+        }
+    }
+    return false;
 }
