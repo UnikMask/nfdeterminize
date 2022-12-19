@@ -2,9 +2,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 
-use crate::trie::FrontierController;
-use crate::trie::NodeTrie;
-use crate::trie::Seq;
+use crate::ubig::Ubig;
 
 #[derive(Debug)]
 pub enum AutomatonType {
@@ -45,85 +43,55 @@ impl Automaton {
     // Rabin Scott Superset Construction Algorithm
     fn rabin_scott(&self) -> (Vec<(usize, usize, usize)>, usize, Vec<usize>, Vec<usize>) {
         // Rabin Scott Superset Construction Algorithm
-        let mut controller = FrontierController::new();
-        let mut state_trie = NodeTrie::new(&mut controller, true); // Empty sequence/set is a state.
         let mut transitions: Vec<(usize, usize, usize)> = Vec::new(); // All DFA transitions
         let mut accept_states: Vec<usize> = Vec::new(); // All accept states
+        let mut num_mapper: HashMap<Ubig, usize>;
+        let mut bookmark = 0;
+        let mut start_states = self
+            .start
+            .iter()
+            .map(|s| (Ubig::from_bit(*s)))
+            .collect::<Vec<Ubig>>();
+        let mut frontier: VecDeque<Ubig> = VecDeque::new();
 
-        // Insert start state in trie and frontier
-        let s0 = Seq::from(&self.start);
-        state_trie.push(&s0, &mut controller);
-        let s0_addr = match state_trie.get_addr(&s0, &mut controller) {
-            Some(address) => address,
-            None => panic!("Start state is supposed to have an address!"),
-        };
-        controller.frontier.push_front(s0);
+        for s in start_states {
+            frontier.push_back(s);
+        }
+        // Graph exploration - Depth-first search
+        while let Some(next) = frontier.pop_front() {
+            let Some(s_n) = num_mapper.get(&next);
+            let mut next_states: Vec<Ubig> = Vec::new();
+            let nd_transitions = self.get_transition_map();
 
-        // Loop add to trie until frontier is empty
-        'main: loop {
-            let mut state_set: Seq = match controller.frontier.pop_front() {
-                Some(set) => set,
-                None => break 'main,
-            };
-            // Populate sets for each alphabet symbols
-            let mut symbol_sets: Vec<HashSet<usize>> = Vec::new();
-            for _ in 0..self.alphabet {
-                symbol_sets.push(HashSet::new());
-            }
-
-            let start_state = match state_trie.get_addr(&state_set, &mut controller) {
-                Some(address) => address,
-                None => panic!("Start state does not have an address!"),
-            };
-
-            // Populate symbols set to get each set of states for each symbol
-            while let Seq::Cons(next, rest) = state_set {
-                for transition in &self.table {
-                    if transition.0 == next {
-                        symbol_sets[transition.1].insert(transition.2);
-                    }
-                }
-                state_set = *rest;
-            }
-
-            // For each sets of states, populate the state trie, get a number, and populate
-            // the transition map.
-            'symbolRec: for i in 0..self.alphabet {
-                let current_set = match symbol_sets.get(i) {
-                    Some(set) => set,
-                    None => break 'symbolRec,
-                };
-                let seq = Seq::from(current_set);
-
-                // Check if the new sequence is new. If it is, add it to map and frontier.
-                if let None = state_trie.get(&seq) {
-                    state_trie.push(&seq, &mut controller);
-                }
-                // Get the sequence's address and the new transition to the transitions map.
-                let end_state = match state_trie.get_addr(&seq, &mut controller) {
-                    Some(address) => address,
-                    None => panic!("Node address should have been assigned!"),
-                };
-
-                // Iterate through sequence to find if it is an accept state
-                let mut seq_iter = &seq;
-                let mut is_accept_state = false;
-                'accept_check: while let Seq::Cons(next, rest) = seq_iter {
-                    for accept_state in &self.end {
-                        if next == accept_state {
-                            is_accept_state = true;
-                            break 'accept_check;
+            // Explore all new states for each alphabet letter.
+            for a in 0..self.alphabet {
+                let mut new_s = Ubig::new();
+                for s in next.get_seq() {
+                    if let Some(s_trs) = nd_transitions.get(&(s, a)) {
+                        for t in s_trs {
+                            new_s.flip(*t);
                         }
                     }
-                    seq_iter = &rest;
                 }
-                if is_accept_state {
-                    accept_states.push(end_state);
+
+                while let None = num_mapper.get(&new_s) {
+                    let num = bookmark;
+                    num_mapper.insert(new_s.clone(), num);
+
+                    bookmark += 1;
+                    frontier.push_back(new_s.clone());
+                    for s in self.end {
+                        if new_s.bit_at(s) {
+                            accept_states.push(num);
+                            break;
+                        }
+                    }
                 }
-                transitions.push((start_state, i, end_state));
+                let Some(num) = num_mapper.get(&new_s);
+                transitions.push((*s_n, a, *num));
             }
         }
-        return (transitions, controller.size(), vec![s0_addr], accept_states);
+        return (Vec::new(), 0, Vec::new(), Vec::new());
     }
 
     // Determinize an NFA.
@@ -268,18 +236,23 @@ impl Automaton {
         return p;
     }
 
-    fn get_transition_map(&self) -> HashMap<(usize, usize), usize> {
-        let mut map: HashMap<(usize, usize), usize> = HashMap::new();
+    fn get_transition_map(&self) -> HashMap<(usize, usize), Vec<usize>> {
+        let mut map: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
 
         for transition in &self.table {
-            map.insert((transition.0, transition.1), transition.2);
+            match map.get_mut(&(transition.0, transition.1)) {
+                Some(v) => v.push(transition.2),
+                None => {
+                    map.insert((transition.0, transition.1), vec![transition.2]);
+                }
+            }
         }
 
         return map;
     }
     fn reverse_transition(&self, set: &HashSet<usize>, c: usize) -> HashSet<usize> {
         return (0..self.size)
-            .filter(|i| set.contains(&self.get_transition_map()[&(*i, c)]))
+            .filter(|i| set.contains(&self.get_transition_map()[&(*i, c)][0]))
             .collect();
     }
 }

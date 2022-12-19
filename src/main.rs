@@ -1,5 +1,7 @@
 mod automaton;
 mod trie;
+mod ubig;
+
 use automaton::Automaton;
 use automaton::AutomatonType;
 
