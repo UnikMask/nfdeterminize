@@ -89,7 +89,7 @@ impl Automaton {
         let start_states = self
             .start
             .iter()
-            .map(|s| (Ubig::from_bit(*s)))
+            .map(|s| (Ubig::from_bit(s)))
             .collect::<Vec<Ubig>>();
         let mut frontier: VecDeque<Ubig> = VecDeque::new();
 
@@ -98,7 +98,6 @@ impl Automaton {
         }
         // Graph exploration - Depth-first search
         while let Some(next) = frontier.pop_front() {
-            let next_states: Vec<Ubig> = Vec::new();
             let nd_transitions = self.get_transition_map();
 
             // Explore all new states for each alphabet letter.
@@ -107,7 +106,7 @@ impl Automaton {
                 for s in next.get_seq() {
                     if let Some(s_trs) = nd_transitions.get(&(s, a)) {
                         for t in s_trs {
-                            new_s.flip(*t);
+                            new_s.flip(t);
                         }
                     }
                 }
@@ -119,7 +118,7 @@ impl Automaton {
                     bookmark += 1;
                     frontier.push_back(new_s.clone());
                     for s in &self.end {
-                        if new_s.bit_at(*s) {
+                        if new_s.bit_at(s) {
                             accept_states.push(num);
                             break;
                         }
