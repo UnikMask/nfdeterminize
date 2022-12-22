@@ -4,14 +4,14 @@ use std::collections::VecDeque;
 
 use crate::ubig::Ubig;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum AutomatonType {
     Det,
     NonDet,
 }
 
 // Structure for an automaton.
-#[derive(Debug)]
+#[derive(Debug, Eq)]
 pub struct Automaton {
     automaton_type: AutomatonType,
     size: usize,
@@ -19,6 +19,45 @@ pub struct Automaton {
     table: Vec<(usize, usize, usize)>,
     start: Vec<usize>,
     end: Vec<usize>,
+}
+
+impl PartialEq for Automaton {
+    fn eq(&self, b: &Automaton) -> bool {
+        if self.automaton_type != b.automaton_type {
+            return false;
+        }
+        if self.size != b.size {
+            return false;
+        }
+        if self.alphabet != b.alphabet {
+            return false;
+        }
+        if self.table.len() != b.table.len() {
+            return false;
+        }
+        for i in 0..self.table.len() {
+            if self.table[i] != b.table[i] {
+                return false;
+            }
+        }
+        if self.start.len() != b.start.len() {
+            return false;
+        }
+        for i in 0..self.start.len() {
+            if self.start[i] != b.start[i] {
+                return false;
+            }
+        }
+        if self.end.len() != b.end.len() {
+            return false;
+        }
+        for i in 0..self.end.len() {
+            if self.end[i] != b.end[i] {
+                return false;
+            }
+        }
+        return true;
+    }
 }
 
 impl Automaton {
@@ -45,9 +84,9 @@ impl Automaton {
         // Rabin Scott Superset Construction Algorithm
         let mut transitions: Vec<(usize, usize, usize)> = Vec::new(); // All DFA transitions
         let mut accept_states: Vec<usize> = Vec::new(); // All accept states
-        let mut num_mapper: HashMap<Ubig, usize>;
+        let mut num_mapper: HashMap<Ubig, usize> = HashMap::new();
         let mut bookmark = 0;
-        let mut start_states = self
+        let start_states = self
             .start
             .iter()
             .map(|s| (Ubig::from_bit(*s)))
@@ -59,8 +98,7 @@ impl Automaton {
         }
         // Graph exploration - Depth-first search
         while let Some(next) = frontier.pop_front() {
-            let Some(s_n) = num_mapper.get(&next);
-            let mut next_states: Vec<Ubig> = Vec::new();
+            let next_states: Vec<Ubig> = Vec::new();
             let nd_transitions = self.get_transition_map();
 
             // Explore all new states for each alphabet letter.
@@ -74,20 +112,27 @@ impl Automaton {
                     }
                 }
 
-                while let None = num_mapper.get(&new_s) {
+                if !num_mapper.contains_key(&new_s) {
                     let num = bookmark;
                     num_mapper.insert(new_s.clone(), num);
 
                     bookmark += 1;
                     frontier.push_back(new_s.clone());
-                    for s in self.end {
-                        if new_s.bit_at(s) {
+                    for s in &self.end {
+                        if new_s.bit_at(*s) {
                             accept_states.push(num);
                             break;
                         }
                     }
                 }
-                let Some(num) = num_mapper.get(&new_s);
+                let num = match num_mapper.get(&new_s) {
+                    Some(n) => n,
+                    None => panic!(),
+                };
+                let s_n = match num_mapper.get(&next) {
+                    Some(s) => s,
+                    None => panic!(),
+                };
                 transitions.push((*s_n, a, *num));
             }
         }
@@ -95,7 +140,7 @@ impl Automaton {
     }
 
     // Determinize an NFA.
-    fn determinize(self) -> Automaton {
+    fn determinized(self) -> Automaton {
         // Return same automaton as it already is deterministic.
         let ret = match self.automaton_type {
             AutomatonType::Det => Automaton {
@@ -136,23 +181,38 @@ impl Automaton {
             table: self
                 .table
                 .into_iter()
-                .map(|t| (get_set(p, t.0), t.1, get_set(p, t.2)))
-                .collect::<HashSet<&(usize, usize, usize)>>()
+                .map(|t| {
+                    let t0 = match p.get(&t.0) {
+                        Some(t) => t,
+                        None => panic!(),
+                    };
+                    let t2 = match p.get(&t.2) {
+                        Some(t) => t,
+                        None => panic!(),
+                    };
+                    (*t0, t.1, *t2)
+                })
+                .collect::<HashSet<(usize, usize, usize)>>()
                 .into_iter()
-                .cloned()
                 .collect::<Vec<(usize, usize, usize)>>(),
             start: self
                 .start
                 .into_iter()
-                .map(|s| get_set(p, s))
+                .map(|s| match p.get(&s) {
+                    Some(t) => t,
+                    None => panic!(),
+                })
                 .collect::<HashSet<&usize>>()
                 .into_iter()
                 .cloned()
                 .collect::<Vec<usize>>(),
-            start: self
+            end: self
                 .end
                 .into_iter()
-                .map(|s| get_set(p, s))
+                .map(|s| match p.get(&s) {
+                    Some(t) => t,
+                    None => panic!(),
+                })
                 .collect::<HashSet<&usize>>()
                 .into_iter()
                 .cloned()
@@ -160,7 +220,7 @@ impl Automaton {
         };
     }
 
-    fn hopcroft_algo(&self) -> VecDeque<HashSet<usize>> {
+    fn hopcroft_algo(&self) -> HashMap<usize, usize> {
         let finals: HashSet<usize> = self.end.clone().into_iter().collect();
 
         // Get sets of all non-finals and finals.
@@ -233,7 +293,14 @@ impl Automaton {
             }
         }
 
-        return p;
+        // Convert partition into map from initial state to partitioned state
+        let mut ret_map: HashMap<usize, usize> = HashMap::new();
+        for i in 0..p.len() {
+            for s in p[i].iter() {
+                ret_map.insert(*s, i);
+            }
+        }
+        return ret_map;
     }
 
     fn get_transition_map(&self) -> HashMap<(usize, usize), Vec<usize>> {
@@ -282,4 +349,31 @@ fn partition_replace(
         }
     }
     return false;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Automaton;
+    use super::AutomatonType;
+
+    #[test]
+    fn test_determinization_redundant() {
+        let redundant_nd = Automaton {
+            automaton_type: AutomatonType::NonDet,
+            size: 1,
+            alphabet: 2,
+            table: vec![(1, 1, 1), (1, 2, 1)],
+            start: vec![1],
+            end: vec![1],
+        };
+        let redundant_d = Automaton {
+            automaton_type: AutomatonType::Det,
+            size: 1,
+            alphabet: 2,
+            table: vec![(1, 1, 1), (1, 2, 1)],
+            start: vec![1],
+            end: vec![1],
+        };
+        assert_eq!(redundant_nd.determinized(), redundant_d);
+    }
 }
