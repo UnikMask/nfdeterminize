@@ -1,6 +1,14 @@
-#[derive(Debug, Hash, Eq)]
+use std::hash::{Hash, Hasher};
+
+#[derive(Debug, Clone, Eq)]
 pub struct Ubig {
-    num: Vec<u8>,
+    pub num: Vec<u8>,
+}
+
+impl Hash for Ubig {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.num.hash(state);
+    }
 }
 
 impl PartialEq for Ubig {
@@ -15,18 +23,6 @@ impl PartialEq for Ubig {
             }
             return true;
         }
-    }
-}
-
-impl Clone for Ubig {
-    fn clone(&self) -> Self {
-        let mut ret = Ubig {
-            num: Vec::with_capacity(self.num.len()),
-        };
-        for b in 0..self.num.len() {
-            ret.num[b] = self.num[b];
-        }
-        ret
     }
 }
 
@@ -112,6 +108,7 @@ impl Ubig {
 
 #[cfg(test)]
 mod ubig_tests {
+
     use super::Ubig;
 
     #[test]

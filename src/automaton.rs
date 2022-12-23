@@ -32,14 +32,6 @@ impl PartialEq for Automaton {
         if self.alphabet != b.alphabet {
             return false;
         }
-        if self.table.len() != b.table.len() {
-            return false;
-        }
-        for i in 0..self.table.len() {
-            if self.table[i] != b.table[i] {
-                return false;
-            }
-        }
         if self.start.len() != b.start.len() {
             return false;
         }
@@ -53,6 +45,14 @@ impl PartialEq for Automaton {
         }
         for i in 0..self.end.len() {
             if self.end[i] != b.end[i] {
+                return false;
+            }
+        }
+        if self.table.len() != b.table.len() {
+            return false;
+        }
+        for i in 0..self.table.len() {
+            if self.table[i] != b.table[i] {
                 return false;
             }
         }
@@ -84,24 +84,28 @@ impl Automaton {
         // Rabin Scott Superset Construction Algorithm
         let mut transitions: Vec<(usize, usize, usize)> = Vec::new(); // All DFA transitions
         let mut accept_states: Vec<usize> = Vec::new(); // All accept states
-        let mut num_mapper: HashMap<Ubig, usize> = HashMap::new();
+        let mut num_mapper: HashMap<Vec<u8>, usize> = HashMap::new();
         let mut bookmark = 0;
-        let start_states = self
-            .start
-            .iter()
-            .map(|s| (Ubig::from_bit(s)))
-            .collect::<Vec<Ubig>>();
         let mut frontier: VecDeque<Ubig> = VecDeque::new();
 
-        for s in start_states {
-            frontier.push_back(s);
+        // Select start state from all start states in the non deterministic automata.
+        let start_state = Ubig::from_seq(&self.start);
+        for s in &self.end {
+            if start_state.bit_at(s) {
+                accept_states.push(0);
+                break;
+            }
         }
+        num_mapper.insert(start_state.num.clone(), bookmark);
+        frontier.push_back(start_state.clone());
+        bookmark += 1;
+
         // Graph exploration - Depth-first search
         while let Some(next) = frontier.pop_front() {
             let nd_transitions = self.get_transition_map();
 
             // Explore all new states for each alphabet letter.
-            for a in 0..self.alphabet {
+            for a in 1..self.alphabet + 1 {
                 let mut new_s = Ubig::new();
                 for s in next.get_seq() {
                     if let Some(s_trs) = nd_transitions.get(&(s, a)) {
@@ -111,31 +115,31 @@ impl Automaton {
                     }
                 }
 
-                if !num_mapper.contains_key(&new_s) {
+                if !num_mapper.contains_key(&new_s.num) {
                     let num = bookmark;
-                    num_mapper.insert(new_s.clone(), num);
+                    num_mapper.insert(new_s.num.clone(), num);
 
                     bookmark += 1;
-                    frontier.push_back(new_s.clone());
                     for s in &self.end {
                         if new_s.bit_at(s) {
                             accept_states.push(num);
                             break;
                         }
                     }
+                    frontier.push_back(new_s.clone());
                 }
-                let num = match num_mapper.get(&new_s) {
+                let num = match num_mapper.get(&new_s.num) {
                     Some(n) => n,
-                    None => panic!(),
+                    None => panic!("New state was not successfully added to mapper!"),
                 };
-                let s_n = match num_mapper.get(&next) {
+                let s_n = match num_mapper.get(&next.num) {
                     Some(s) => s,
-                    None => panic!(),
+                    None => panic!("State in queue was not succesfully added to mapper!"),
                 };
                 transitions.push((*s_n, a, *num));
             }
         }
-        return (Vec::new(), 0, Vec::new(), Vec::new());
+        return (transitions, num_mapper.len(), vec![0], accept_states);
     }
 
     // Determinize an NFA.
@@ -361,17 +365,17 @@ mod tests {
             automaton_type: AutomatonType::NonDet,
             size: 1,
             alphabet: 2,
-            table: vec![(1, 1, 1), (1, 2, 1)],
-            start: vec![1],
-            end: vec![1],
+            table: vec![(0, 1, 0), (0, 2, 0)],
+            start: vec![0],
+            end: vec![0],
         };
         let redundant_d = Automaton {
             automaton_type: AutomatonType::Det,
             size: 1,
             alphabet: 2,
-            table: vec![(1, 1, 1), (1, 2, 1)],
-            start: vec![1],
-            end: vec![1],
+            table: vec![(0, 1, 0), (0, 2, 0)],
+            start: vec![0],
+            end: vec![0],
         };
         assert_eq!(redundant_nd.determinized(), redundant_d);
     }
