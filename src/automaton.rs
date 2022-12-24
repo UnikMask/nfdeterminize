@@ -110,7 +110,7 @@ impl Automaton {
                 for s in next.get_seq() {
                     if let Some(s_trs) = nd_transitions.get(&(s, a)) {
                         for t in s_trs {
-                            new_s.flip(t);
+                            new_s.set_to(t, true);
                         }
                     }
                 }
@@ -378,5 +378,122 @@ mod tests {
             end: vec![0],
         };
         assert_eq!(redundant_nd.determinized(), redundant_d);
+    }
+
+    #[test]
+    fn test_determinization_empty_lang() {
+        let empty_lang_nd = Automaton {
+            automaton_type: AutomatonType::NonDet,
+            size: 1,
+            alphabet: 2,
+            table: vec![],
+            start: vec![0],
+            end: vec![0],
+        };
+        let empty_lang_d = Automaton {
+            automaton_type: AutomatonType::Det,
+            size: 2,
+            alphabet: 2,
+            table: vec![(0, 1, 1), (0, 2, 1), (1, 1, 1), (1, 2, 1)],
+            start: vec![0],
+            end: vec![0],
+        };
+        assert_eq!(empty_lang_nd.determinized(), empty_lang_d);
+    }
+
+    #[test]
+    fn test_determinization_unreachable() {
+        let unreachable_nd = Automaton {
+            automaton_type: AutomatonType::NonDet,
+            size: 2,
+            alphabet: 2,
+            table: vec![(0, 1, 0), (0, 2, 0)],
+            start: vec![0],
+            end: vec![0],
+        };
+        let unreachable_d = Automaton {
+            automaton_type: AutomatonType::Det,
+            size: 1,
+            alphabet: 2,
+            table: vec![(0, 1, 0), (0, 2, 0)],
+            start: vec![0],
+            end: vec![0],
+        };
+        assert_eq!(unreachable_nd.determinized(), unreachable_d);
+    }
+
+    #[test]
+    fn test_determinization_sinkhole() {
+        let sinkhole_nd = Automaton {
+            automaton_type: AutomatonType::NonDet,
+            size: 3,
+            alphabet: 2,
+            table: vec![(0, 1, 1), (1, 1, 2)],
+            start: vec![0],
+            end: vec![2],
+        };
+        let sinkhole_d = Automaton {
+            automaton_type: AutomatonType::Det,
+            size: 4,
+            alphabet: 2,
+            table: vec![
+                (0, 1, 1),
+                (0, 2, 2),
+                (1, 1, 3),
+                (1, 2, 2),
+                (2, 1, 2),
+                (2, 2, 2),
+                (3, 1, 2),
+                (3, 2, 2),
+            ],
+            start: vec![0],
+            end: vec![3],
+        };
+        assert_eq!(sinkhole_nd.determinized(), sinkhole_d);
+    }
+
+    #[test]
+    fn test_determinization_duplicate_transitions() {
+        let duplicate_transitions_nd = Automaton {
+            automaton_type: AutomatonType::NonDet,
+            size: 2,
+            alphabet: 2,
+            table: vec![(0, 1, 1), (0, 1, 1), (0, 2, 1), (1, 1, 1), (1, 2, 1)],
+            start: vec![0],
+            end: vec![1],
+        };
+        let duplicate_transitions_d = Automaton {
+            automaton_type: AutomatonType::Det,
+            size: 2,
+            alphabet: 2,
+            table: vec![(0, 1, 1), (0, 2, 1), (1, 1, 1), (1, 2, 1)],
+            start: vec![0],
+            end: vec![1],
+        };
+        assert_eq!(
+            duplicate_transitions_nd.determinized(),
+            duplicate_transitions_d
+        );
+    }
+
+    #[test]
+    fn test_determinization_set_of_states() {
+        let set_of_states_nd = Automaton {
+            automaton_type: AutomatonType::NonDet,
+            size: 2,
+            alphabet: 1,
+            table: vec![(0, 1, 0), (0, 1, 1)],
+            start: vec![0],
+            end: vec![1],
+        };
+        let set_of_states_d = Automaton {
+            automaton_type: AutomatonType::Det,
+            size: 2,
+            alphabet: 1,
+            table: vec![(0, 1, 1), (1, 1, 1)],
+            start: vec![0],
+            end: vec![1],
+        };
+        assert_eq!(set_of_states_nd.determinized(), set_of_states_d);
     }
 }
