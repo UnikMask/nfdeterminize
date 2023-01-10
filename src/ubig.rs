@@ -13,16 +13,24 @@ impl Hash for Ubig {
 
 impl PartialEq for Ubig {
     fn eq(&self, other: &Ubig) -> bool {
-        if self.num.len() != other.num.len() {
-            return false;
-        } else {
-            for b in 0..self.num.len() {
-                if self.num[b] & other.num[b] != 0 {
+        let mut a = self;
+        let mut b = other;
+
+        if a.num.len() < b.num.len() {
+            let t = a;
+            a = b;
+            b = t;
+        }
+        for bit in 0..a.num.len() {
+            if bit >= b.num.len() {
+                if a.num[bit] == 1 {
                     return false;
                 }
+            } else if a.num[bit] != b.num[bit] {
+                return false;
             }
-            return true;
         }
+        return true;
     }
 }
 
@@ -110,6 +118,18 @@ impl Ubig {
 mod ubig_tests {
 
     use super::Ubig;
+
+    #[test]
+    fn test_clone() {
+        let num0 = Ubig::from_bit(&0);
+        assert_eq!(num0, num0.clone());
+
+        let num1 = Ubig::from_bit(&1);
+        assert_eq!(num1, num1.clone());
+
+        let num4 = Ubig::from_bit(&4);
+        assert_eq!(num4, num4.clone());
+    }
 
     #[test]
     fn test_from_bit() {
