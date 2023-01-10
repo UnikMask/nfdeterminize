@@ -89,7 +89,10 @@ impl Automaton {
         let mut frontier: VecDeque<Ubig> = VecDeque::new();
 
         // Select start state from all start states in the non deterministic automata.
-        let start_state = Ubig::from_seq(&self.start);
+        let mut start_state = Ubig::new();
+        for s in &self.start {
+            self.add_state(&mut start_state, *s);
+        }
         for s in &self.end {
             if start_state.bit_at(s) {
                 accept_states.push(0);
@@ -110,7 +113,7 @@ impl Automaton {
                 for s in next.get_seq() {
                     if let Some(s_trs) = nd_transitions.get(&(s, a)) {
                         for t in s_trs {
-                            new_s.set_to(t, true);
+                            self.add_state(&mut new_s, *t);
                         }
                     }
                 }
@@ -140,6 +143,18 @@ impl Automaton {
             }
         }
         return (transitions, num_mapper.len(), vec![0], accept_states);
+    }
+
+    fn add_state(&self, num: &mut Ubig, bit: usize) {
+        num.set_to(&bit, true);
+        let nd_transitions = self.get_transition_map();
+        if let Some(s_trs) = nd_transitions.get(&(bit, 0)) {
+            for t in s_trs {
+                if !num.bit_at(&t) {
+                    self.add_state(num, *t);
+                }
+            }
+        }
     }
 
     // Determinize an NFA.
@@ -503,7 +518,15 @@ mod tests {
             automaton_type: AutomatonType::NonDet,
             size: 4,
             alphabet: 2,
-            table: vec![(0, 0, 1), (0, 1, 2), (1, 1, 3), (2, 2, 3)],
+            table: vec![
+                (0, 0, 1),
+                (0, 1, 2),
+                (1, 1, 3),
+                (2, 2, 3),
+                (3, 0, 3),
+                (3, 1, 3),
+                (3, 2, 3),
+            ],
             start: vec![0],
             end: vec![3],
         };
@@ -518,9 +541,11 @@ mod tests {
                 (1, 2, 3),
                 (2, 1, 2),
                 (2, 2, 2),
+                (3, 1, 3),
+                (3, 2, 3),
             ],
             start: vec![0],
-            end: vec![3],
+            end: vec![1, 3],
         };
         assert_eq!(empty_char_nd.determinized(), empty_char_d);
     }
