@@ -84,7 +84,7 @@ impl Automaton {
         // Rabin Scott Superset Construction Algorithm
         let mut transitions: Vec<(usize, usize, usize)> = Vec::new(); // All DFA transitions
         let mut accept_states: Vec<usize> = Vec::new(); // All accept states
-        let mut num_mapper: HashMap<Vec<u8>, usize> = HashMap::new();
+        let mut num_mapper: HashMap<Ubig, usize> = HashMap::new();
         let mut bookmark = 0;
         let mut frontier: VecDeque<Ubig> = VecDeque::new();
 
@@ -96,7 +96,7 @@ impl Automaton {
                 break;
             }
         }
-        num_mapper.insert(start_state.num.clone(), bookmark);
+        num_mapper.insert(start_state.clone(), bookmark);
         frontier.push_back(start_state.clone());
         bookmark += 1;
 
@@ -115,9 +115,9 @@ impl Automaton {
                     }
                 }
 
-                if !num_mapper.contains_key(&new_s.num) {
+                if !num_mapper.contains_key(&new_s) {
                     let num = bookmark;
-                    num_mapper.insert(new_s.num.clone(), num);
+                    num_mapper.insert(new_s.clone(), num);
 
                     bookmark += 1;
                     for s in &self.end {
@@ -128,11 +128,11 @@ impl Automaton {
                     }
                     frontier.push_back(new_s.clone());
                 }
-                let num = match num_mapper.get(&new_s.num) {
+                let num = match num_mapper.get(&new_s) {
                     Some(n) => n,
                     None => panic!("New state was not successfully added to mapper!"),
                 };
-                let s_n = match num_mapper.get(&next.num) {
+                let s_n = match num_mapper.get(&next) {
                     Some(s) => s,
                     None => panic!("State in queue was not succesfully added to mapper!"),
                 };
@@ -495,5 +495,33 @@ mod tests {
             end: vec![1],
         };
         assert_eq!(set_of_states_nd.determinized(), set_of_states_d);
+    }
+
+    #[test]
+    fn test_empty_char() {
+        let empty_char_nd = Automaton {
+            automaton_type: AutomatonType::NonDet,
+            size: 4,
+            alphabet: 2,
+            table: vec![(0, 0, 1), (0, 1, 2), (1, 1, 3), (2, 2, 3)],
+            start: vec![0],
+            end: vec![3],
+        };
+        let empty_char_d = Automaton {
+            automaton_type: AutomatonType::Det,
+            size: 4,
+            alphabet: 2,
+            table: vec![
+                (0, 1, 1),
+                (0, 2, 2),
+                (1, 1, 3),
+                (1, 2, 3),
+                (2, 1, 2),
+                (2, 2, 2),
+            ],
+            start: vec![0],
+            end: vec![3],
+        };
+        assert_eq!(empty_char_nd.determinized(), empty_char_d);
     }
 }
