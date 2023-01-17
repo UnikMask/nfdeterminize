@@ -185,16 +185,18 @@ impl Automaton {
     }
 
     // Minimize a DFA.
-    fn minimize(self) -> Automaton {
-        if let AutomatonType::Det = self.automaton_type {
+    fn minimized(self) -> Automaton {
+        if let AutomatonType::NonDet = self.automaton_type {
             return self;
         }
 
-        let p = self.hopcroft_algo();
+        let tuple = self.hopcroft_algo();
+        let p = tuple.0;
+        let len = tuple.1;
 
-        return Automaton {
+        let mut ret = Automaton {
             automaton_type: AutomatonType::Det,
-            size: p.len(),
+            size: len,
             alphabet: self.alphabet,
             table: self
                 .table
@@ -236,9 +238,13 @@ impl Automaton {
                 .cloned()
                 .collect::<Vec<usize>>(),
         };
+        ret.start.sort();
+        ret.end.sort();
+        ret.table.sort();
+        return ret;
     }
 
-    fn hopcroft_algo(&self) -> HashMap<usize, usize> {
+    fn hopcroft_algo(&self) -> (HashMap<usize, usize>, usize) {
         let finals: HashSet<usize> = self.end.clone().into_iter().collect();
 
         // Get sets of all non-finals and finals.
@@ -250,18 +256,7 @@ impl Automaton {
                 .collect::<HashSet<usize>>(),
             finals.clone(),
         ]);
-
-        let mut p_frontier: VecDeque<HashSet<usize>> = VecDeque::from_iter(vec![
-            (0..self.size)
-                .collect::<HashSet<usize>>()
-                .difference(&finals)
-                .cloned()
-                .collect::<HashSet<usize>>(),
-            finals.clone(),
-        ]);
-
-        // Get transition map for efficiency
-        let map = self.get_transition_map();
+        let mut p_frontier: VecDeque<HashSet<usize>> = p.clone();
 
         // Iterate until the partition frontier is empty
         loop {
@@ -272,7 +267,7 @@ impl Automaton {
             };
 
             // Iterate over each input symbol
-            for c in 0..self.alphabet {
+            for c in 1..self.alphabet + 1 {
                 let rs = self.reverse_transition(&set, c);
 
                 // Loop through all sets in P.
@@ -288,8 +283,8 @@ impl Automaton {
                         let r0 = r.intersection(&rs).cloned().collect::<HashSet<usize>>();
                         let r1 = r.difference(&rs).cloned().collect::<HashSet<usize>>();
 
-                        p.push_back(r0.clone());
                         p.push_back(r1.clone());
+                        p.push_back(r0.clone());
 
                         // Replace r with r0 and r1 if r is in frontier
                         if !partition_replace(
@@ -318,7 +313,7 @@ impl Automaton {
                 ret_map.insert(*s, i);
             }
         }
-        return ret_map;
+        return (ret_map, p.len());
     }
 
     fn get_transition_map(&self) -> HashMap<(usize, usize), Vec<usize>> {
@@ -335,6 +330,7 @@ impl Automaton {
 
         return map;
     }
+
     fn reverse_transition(&self, set: &HashSet<usize>, c: usize) -> HashSet<usize> {
         return (0..self.size)
             .filter(|i| set.contains(&self.get_transition_map()[&(*i, c)][0]))
@@ -513,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_char() {
+    fn test_determinization_empty_char() {
         let empty_char_nd = Automaton {
             automaton_type: AutomatonType::NonDet,
             size: 4,
@@ -548,5 +544,76 @@ mod tests {
             end: vec![1, 3],
         };
         assert_eq!(empty_char_nd.determinized(), empty_char_d);
+    }
+
+    #[test]
+    fn test_minimization_bipartite() {
+        let bipartite_big = Automaton {
+            automaton_type: AutomatonType::Det,
+            size: 3,
+            alphabet: 2,
+            table: vec![
+                (0, 1, 1),
+                (0, 2, 2),
+                (1, 1, 1),
+                (1, 2, 1),
+                (2, 1, 2),
+                (2, 2, 2),
+            ],
+            start: vec![0],
+            end: vec![1, 2],
+        };
+        let bipartite_small = Automaton {
+            automaton_type: AutomatonType::Det,
+            size: 2,
+            alphabet: 2,
+            table: vec![(0, 1, 1), (0, 2, 1), (1, 1, 1), (1, 2, 1)],
+            start: vec![0],
+            end: vec![1],
+        };
+        assert_eq!(bipartite_big.minimized(), bipartite_small);
+    }
+
+    #[test]
+    fn test_minimization_separation() {
+        let sep_big = Automaton {
+            automaton_type: AutomatonType::Det,
+            size: 6,
+            alphabet: 2,
+            table: vec![
+                (0, 1, 3),
+                (0, 2, 1),
+                (1, 1, 2),
+                (1, 2, 5),
+                (2, 1, 2),
+                (2, 2, 5),
+                (3, 1, 0),
+                (3, 2, 4),
+                (4, 1, 2),
+                (4, 2, 5),
+                (5, 1, 5),
+                (5, 2, 5),
+            ],
+            start: vec![0],
+            end: vec![1, 2, 4],
+        };
+
+        let sep_small = Automaton {
+            automaton_type: AutomatonType::Det,
+            size: 3,
+            alphabet: 2,
+            table: vec![
+                (0, 1, 0),
+                (0, 2, 2),
+                (1, 1, 1),
+                (1, 2, 1),
+                (2, 1, 2),
+                (2, 2, 1),
+            ],
+            start: vec![0],
+            end: vec![2],
+        };
+
+        assert_eq!(sep_big.minimized(), sep_small);
     }
 }
