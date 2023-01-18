@@ -35,16 +35,20 @@ impl PartialEq for Ubig {
 }
 
 impl Ubig {
+    /// Create a new Ubig.
     pub fn new() -> Ubig {
         Ubig { num: Vec::new() }
     }
 
-    pub fn from_seq(bit_list: &Vec<usize>) -> Ubig {
+    fn from_seq(bit_list: &Vec<usize>) -> Ubig {
         let mut ret = Ubig::new();
-        ret.flip_seq(bit_list);
+        for bit in bit_list {
+            ret.set_to(&bit, true);
+        }
         return ret;
     }
 
+    /// Get a Ubig's bit sequence.
     pub fn get_seq(&self) -> Vec<usize> {
         let mut ret: Vec<usize> = Vec::new();
         for byte in 0..self.num.len() {
@@ -65,17 +69,10 @@ impl Ubig {
         }
     }
 
-    pub fn from_bit(bit: &usize) -> Ubig {
+    fn from_bit(bit: &usize) -> Ubig {
         let mut ret = Ubig::new();
         ret.flip(bit);
         return ret;
-    }
-
-    // Flip bits given from a sequence.
-    pub fn flip_seq(&mut self, bit_list: &Vec<usize>) {
-        for bit in bit_list {
-            self.flip(&bit);
-        }
     }
 
     // Flip a bit on given array position.
