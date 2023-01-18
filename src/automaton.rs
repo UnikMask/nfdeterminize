@@ -4,14 +4,14 @@ use std::collections::VecDeque;
 
 use crate::ubig::Ubig;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AutomatonType {
     Det,
     NonDet,
 }
 
 // Structure for an automaton.
-#[derive(Debug, Eq)]
+#[derive(Debug, Eq, Clone, PartialEq)]
 pub struct Automaton {
     automaton_type: AutomatonType,
     size: usize,
@@ -21,46 +21,12 @@ pub struct Automaton {
     end: Vec<usize>,
 }
 
-impl PartialEq for Automaton {
-    fn eq(&self, b: &Automaton) -> bool {
-        if self.automaton_type != b.automaton_type {
-            return false;
-        }
-        if self.size != b.size {
-            return false;
-        }
-        if self.alphabet != b.alphabet {
-            return false;
-        }
-        if self.start.len() != b.start.len() {
-            return false;
-        }
-        for i in 0..self.start.len() {
-            if self.start[i] != b.start[i] {
-                return false;
-            }
-        }
-        if self.end.len() != b.end.len() {
-            return false;
-        }
-        for i in 0..self.end.len() {
-            if self.end[i] != b.end[i] {
-                return false;
-            }
-        }
-        if self.table.len() != b.table.len() {
-            return false;
-        }
-        for i in 0..self.table.len() {
-            if self.table[i] != b.table[i] {
-                return false;
-            }
-        }
-        return true;
-    }
-}
-
 impl Automaton {
+    ////////////////////
+    // Public methods //
+    ////////////////////
+
+    /// Return a new automaton
     pub fn new(
         automaton_type: AutomatonType,
         size: usize,
@@ -79,7 +45,76 @@ impl Automaton {
         }
     }
 
-    // Rabin Scott Superset Construction Algorithm
+    /// Return a determinized version of the given automata - Using Rabin-Scott's Superset Construction algorithm.
+    pub fn determinized(&self) -> Automaton {
+        // Return same automaton as it already is deterministic.
+        let ret = match self.automaton_type {
+            AutomatonType::Det => Automaton {
+                automaton_type: AutomatonType::Det,
+                size: self.size,
+                alphabet: self.alphabet,
+                table: self.table.clone(),
+                start: self.start.clone(),
+                end: self.end.clone(),
+            },
+            AutomatonType::NonDet => {
+                let (transitions, a_size, a_start, a_end) = self.rabin_scott();
+                return Automaton {
+                    automaton_type: AutomatonType::Det,
+                    size: a_size,
+                    alphabet: self.alphabet,
+                    table: transitions,
+                    start: a_start,
+                    end: a_end,
+                };
+            }
+        };
+        return ret;
+    }
+
+    /// Return a minimized version of the given automata - Using Hopcroft's partition algorithm.
+    pub fn minimized(&self) -> Automaton {
+        if let AutomatonType::NonDet = self.automaton_type {
+            return self.clone();
+        }
+
+        let tuple = self.hopcroft_algo();
+        let p = tuple.0;
+        let len = tuple.1;
+
+        let mut ret = Automaton {
+            automaton_type: AutomatonType::Det,
+            size: len,
+            alphabet: self.alphabet,
+            table: self
+                .table
+                .clone()
+                .into_iter()
+                .map(|t| {
+                    if let (Some(t0), Some(t2)) = (p.get(&t.0), p.get(&t.2)) {
+                        (*t0, t.1, *t2)
+                    } else {
+                        panic!();
+                    }
+                })
+                .collect::<HashSet<(usize, usize, usize)>>()
+                .into_iter()
+                .collect::<Vec<(usize, usize, usize)>>(),
+            start: Automaton::get_part_vec_from_vec(&p, &self.start),
+            end: Automaton::get_part_vec_from_vec(&p, &self.end),
+        };
+        ret.start.sort();
+        ret.end.sort();
+        ret.table.sort();
+        return ret;
+    }
+
+    ////////////////
+    // Algorithms //
+    ////////////////
+
+    /// Rabin Scott Superset Construction Algorithm - Used for determinization of NFAs.
+    /// Returns: (transitions vector, number of states, start states, end states).
     fn rabin_scott(&self) -> (Vec<(usize, usize, usize)>, usize, Vec<usize>, Vec<usize>) {
         // Rabin Scott Superset Construction Algorithm
         let mut transitions: Vec<(usize, usize, usize)> = Vec::new(); // All DFA transitions
@@ -145,134 +180,29 @@ impl Automaton {
         return (transitions, num_mapper.len(), vec![0], accept_states);
     }
 
-    fn add_state(&self, num: &mut Ubig, bit: usize) {
-        num.set_to(&bit, true);
-        let nd_transitions = self.get_transition_map();
-        if let Some(s_trs) = nd_transitions.get(&(bit, 0)) {
-            for t in s_trs {
-                if !num.bit_at(&t) {
-                    self.add_state(num, *t);
-                }
-            }
-        }
-    }
-
-    // Determinize an NFA.
-    fn determinized(self) -> Automaton {
-        // Return same automaton as it already is deterministic.
-        let ret = match self.automaton_type {
-            AutomatonType::Det => Automaton {
-                automaton_type: AutomatonType::Det,
-                size: self.size,
-                alphabet: self.alphabet,
-                table: self.table.clone(),
-                start: self.start.clone(),
-                end: self.end.clone(),
-            },
-            AutomatonType::NonDet => {
-                let (transitions, a_size, a_start, a_end) = self.rabin_scott();
-                return Automaton {
-                    automaton_type: AutomatonType::Det,
-                    size: a_size,
-                    alphabet: self.alphabet,
-                    table: transitions,
-                    start: a_start,
-                    end: a_end,
-                };
-            }
-        };
-        return ret;
-    }
-
-    // Minimize a DFA.
-    fn minimized(self) -> Automaton {
-        if let AutomatonType::NonDet = self.automaton_type {
-            return self;
-        }
-
-        let tuple = self.hopcroft_algo();
-        let p = tuple.0;
-        let len = tuple.1;
-
-        let mut ret = Automaton {
-            automaton_type: AutomatonType::Det,
-            size: len,
-            alphabet: self.alphabet,
-            table: self
-                .table
-                .into_iter()
-                .map(|t| {
-                    let t0 = match p.get(&t.0) {
-                        Some(t) => t,
-                        None => panic!(),
-                    };
-                    let t2 = match p.get(&t.2) {
-                        Some(t) => t,
-                        None => panic!(),
-                    };
-                    (*t0, t.1, *t2)
-                })
-                .collect::<HashSet<(usize, usize, usize)>>()
-                .into_iter()
-                .collect::<Vec<(usize, usize, usize)>>(),
-            start: self
-                .start
-                .into_iter()
-                .map(|s| match p.get(&s) {
-                    Some(t) => t,
-                    None => panic!(),
-                })
-                .collect::<HashSet<&usize>>()
-                .into_iter()
-                .cloned()
-                .collect::<Vec<usize>>(),
-            end: self
-                .end
-                .into_iter()
-                .map(|s| match p.get(&s) {
-                    Some(t) => t,
-                    None => panic!(),
-                })
-                .collect::<HashSet<&usize>>()
-                .into_iter()
-                .cloned()
-                .collect::<Vec<usize>>(),
-        };
-        ret.start.sort();
-        ret.end.sort();
-        ret.table.sort();
-        return ret;
-    }
-
+    /// Hopcroft algorithm for minimization of a DFA.
+    /// Returns a map of what state is in which leading partition, and the number of partitions.
     fn hopcroft_algo(&self) -> (HashMap<usize, usize>, usize) {
         let finals: HashSet<usize> = self.end.clone().into_iter().collect();
 
         // Get sets of all non-finals and finals.
         let mut p: VecDeque<HashSet<usize>> = VecDeque::from_iter(vec![
             (0..self.size)
-                .collect::<HashSet<usize>>()
-                .difference(&finals)
-                .cloned()
+                .filter(|i| !finals.contains(i))
                 .collect::<HashSet<usize>>(),
             finals.clone(),
         ]);
         let mut p_frontier: VecDeque<HashSet<usize>> = p.clone();
+        let rev_map = self.get_reverse_transition_map();
 
         // Iterate until the partition frontier is empty
-        loop {
-            // Get a new set from the frontier and break if the frontier's empty
-            let set = match p_frontier.pop_front() {
-                Some(s) => s,
-                None => break,
-            };
-
+        while let Some(set) = p_frontier.pop_front() {
             // Iterate over each input symbol
             for c in 1..self.alphabet + 1 {
-                let rs = self.reverse_transition(&set, c);
+                let rs = Automaton::get_set_transitions(&rev_map, &set, c);
 
                 // Loop through all sets in P.
-                let len = p.len();
-                for _ in 0..len {
+                for _ in 0..p.len() {
                     let r = match p.pop_front() {
                         Some(set) => set,
                         None => break,
@@ -282,16 +212,13 @@ impl Automaton {
                         // Get sets of intersections and differences
                         let r0 = r.intersection(&rs).cloned().collect::<HashSet<usize>>();
                         let r1 = r.difference(&rs).cloned().collect::<HashSet<usize>>();
+                        let replacements = vec![r1.clone(), r0.clone()];
 
                         p.push_back(r1.clone());
                         p.push_back(r0.clone());
 
                         // Replace r with r0 and r1 if r is in frontier
-                        if !partition_replace(
-                            &mut p_frontier,
-                            &r,
-                            &mut vec![r1.clone(), r0.clone()],
-                        ) {
+                        if !Automaton::replace_in_partition(&mut p_frontier, &r, replacements) {
                             // Add to frontier whichever of r0 or r1 is the smallest
                             if r0.len() <= r1.len() {
                                 p_frontier.push_back(r0);
@@ -316,6 +243,24 @@ impl Automaton {
         return (ret_map, p.len());
     }
 
+    ///////////////
+    // Utilities //
+    ///////////////
+
+    /// Add a state into a set of states, adding states connected via the empty char to the set with it.
+    fn add_state(&self, num: &mut Ubig, bit: usize) {
+        num.set_to(&bit, true);
+        let nd_transitions = self.get_transition_map();
+        if let Some(s_trs) = nd_transitions.get(&(bit, 0)) {
+            for t in s_trs {
+                if !num.bit_at(&t) {
+                    self.add_state(num, *t);
+                }
+            }
+        }
+    }
+
+    /// Get a hashmap of leading states from a given letter and original state.
     fn get_transition_map(&self) -> HashMap<(usize, usize), Vec<usize>> {
         let mut map: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
 
@@ -331,38 +276,77 @@ impl Automaton {
         return map;
     }
 
-    fn reverse_transition(&self, set: &HashSet<usize>, c: usize) -> HashSet<usize> {
-        return (0..self.size)
-            .filter(|i| set.contains(&self.get_transition_map()[&(*i, c)][0]))
-            .collect();
-    }
-}
-
-// Check if a set is contained in a set in a partition.
-fn partition_replace(
-    p: &mut VecDeque<HashSet<usize>>,
-    replaced: &HashSet<usize>,
-    replacements: &mut Vec<HashSet<usize>>,
-) -> bool {
-    let p_len = p.len();
-    for _ in 0..p_len {
-        let next = match p.pop_front() {
-            Some(next) => next,
-            None => break,
-        };
-        if replaced.difference(&next).next() == None {
-            loop {
-                p.push_back(match replacements.pop() {
-                    Some(r) => r,
-                    None => break,
-                });
-                return true;
+    /// Get a map of all reverse transitions in the DFA.
+    fn get_reverse_transition_map(&self) -> HashMap<(usize, usize), Vec<usize>> {
+        let mut map: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
+        for transition in &self.table {
+            match map.get_mut(&(transition.2, transition.1)) {
+                Some(v) => v.push(transition.0),
+                None => {
+                    map.insert((transition.2, transition.1), vec![transition.0]);
+                }
             }
-        } else {
-            p.push_back(next);
         }
+        return map;
     }
-    return false;
+
+    ////////////////////
+    // Static methods //
+    ////////////////////
+
+    /// Get a vector of partitions from a vector of initial states and a partition map.
+    fn get_part_vec_from_vec(p: &HashMap<usize, usize>, s: &Vec<usize>) -> Vec<usize> {
+        s.clone()
+            .into_iter()
+            .map(|s| match p.get(&s) {
+                Some(t) => *t,
+                None => panic!(),
+            })
+            .collect::<HashSet<usize>>()
+            .into_iter()
+            .collect::<Vec<usize>>()
+    }
+
+    /// Get a list of states that are destinations of given set of states and character from
+    /// a transition/reverse transition map.
+    fn get_set_transitions(
+        map: &HashMap<(usize, usize), Vec<usize>>,
+        set: &HashSet<usize>,
+        c: usize,
+    ) -> HashSet<usize> {
+        let mut ret: HashSet<usize> = HashSet::new();
+        set.into_iter().for_each(|s| {
+            if let Some(arr) = map.get(&(*s, c)) {
+                arr.into_iter().for_each(|v| {
+                    ret.insert(*v);
+                });
+            }
+        });
+        ret
+    }
+
+    /// Replace a set with other sets from a set of sets (a partition).
+    fn replace_in_partition(
+        p: &mut VecDeque<HashSet<usize>>,
+        replaced: &HashSet<usize>,
+        replacements: Vec<HashSet<usize>>,
+    ) -> bool {
+        for _ in 0..p.len() {
+            let next = match p.pop_front() {
+                Some(next) => next,
+                None => break,
+            };
+            if *replaced == next {
+                for replacement in replacements {
+                    p.push_back(replacement.clone());
+                }
+                return true;
+            } else {
+                p.push_back(next);
+            }
+        }
+        return false;
+    }
 }
 
 #[cfg(test)]
@@ -371,6 +355,7 @@ mod tests {
     use super::AutomatonType;
 
     #[test]
+    // Test the behaviour of determinization over an NFA that is already deterministic.
     fn test_determinization_redundant() {
         let redundant_nd = Automaton {
             automaton_type: AutomatonType::NonDet,
@@ -392,6 +377,7 @@ mod tests {
     }
 
     #[test]
+    // Test the behaviour of determinization over a single state, no transition NFA.
     fn test_determinization_empty_lang() {
         let empty_lang_nd = Automaton {
             automaton_type: AutomatonType::NonDet,
@@ -413,6 +399,7 @@ mod tests {
     }
 
     #[test]
+    // Test whether determinization gets rid of unreachable states.
     fn test_determinization_unreachable() {
         let unreachable_nd = Automaton {
             automaton_type: AutomatonType::NonDet,
@@ -434,6 +421,7 @@ mod tests {
     }
 
     #[test]
+    // Test whether determinization can successfully produce a sinkhole state from an empty set of states.
     fn test_determinization_sinkhole() {
         let sinkhole_nd = Automaton {
             automaton_type: AutomatonType::NonDet,
@@ -464,6 +452,8 @@ mod tests {
     }
 
     #[test]
+    // Test whether duplicate transitions in a non deterministic automata are lost after
+    // determinization.
     fn test_determinization_duplicate_transitions() {
         let duplicate_transitions_nd = Automaton {
             automaton_type: AutomatonType::NonDet,
@@ -488,6 +478,7 @@ mod tests {
     }
 
     #[test]
+    // Test whether sets of states are detected and dealt as a single state in determinization.
     fn test_determinization_set_of_states() {
         let set_of_states_nd = Automaton {
             automaton_type: AutomatonType::NonDet,
@@ -509,6 +500,7 @@ mod tests {
     }
 
     #[test]
+    // Test whether determinization identifies and deals with empty char transitions.
     fn test_determinization_empty_char() {
         let empty_char_nd = Automaton {
             automaton_type: AutomatonType::NonDet,
@@ -547,6 +539,7 @@ mod tests {
     }
 
     #[test]
+    // Test whether a machine minimizable into 2 partitions will be minimized as such.
     fn test_minimization_bipartite() {
         let bipartite_big = Automaton {
             automaton_type: AutomatonType::Det,
@@ -575,6 +568,7 @@ mod tests {
     }
 
     #[test]
+    // Test whether minimization can separate sets partitions into smaller partitions.
     fn test_minimization_separation() {
         let sep_big = Automaton {
             automaton_type: AutomatonType::Det,
@@ -615,5 +609,30 @@ mod tests {
         };
 
         assert_eq!(sep_big.minimized(), sep_small);
+    }
+
+    #[test]
+    // Test whether unminimizable machines cannot be minimized (the size doesn't decrease).
+    fn test_minimization_unminimizable() {
+        let unmin_big = Automaton {
+            automaton_type: AutomatonType::Det,
+            size: 4,
+            alphabet: 2,
+            table: vec![
+                (0, 1, 1),
+                (0, 2, 2),
+                (1, 1, 2),
+                (1, 2, 3),
+                (2, 1, 2),
+                (2, 2, 2),
+                (3, 1, 1),
+                (3, 2, 3),
+            ],
+            start: vec![0],
+            end: vec![3],
+        };
+
+        let unmin_small = unmin_big.minimized();
+        assert_eq!(unmin_small.size, 4);
     }
 }
