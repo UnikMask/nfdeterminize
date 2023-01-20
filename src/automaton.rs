@@ -4,6 +4,8 @@ use std::collections::VecDeque;
 
 use crate::ubig::Ubig;
 
+static N_THREADS: usize = 12;
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AutomatonType {
     Det,
@@ -43,6 +45,11 @@ impl Automaton {
             start,
             end,
         }
+    }
+
+    /// Return an empty automaton structure.
+    pub fn empty() -> Automaton {
+        Automaton::new(AutomatonType::Det, 0, 0, vec![], vec![], vec![])
     }
 
     /// Return a determinized version of the given automata - Using Rabin-Scott's Superset Construction algorithm.
@@ -123,17 +130,20 @@ impl Automaton {
         let mut bookmark = 0;
         let mut frontier: VecDeque<Ubig> = VecDeque::new();
 
+        let mut frontier_c: Vec<VecDeque<Ubig>> = Vec::with_capacity(N_THREADS + 1);
+        for i in 0..N_THREADS + 1 {
+            frontier_c[i] = VecDeque::new();
+        }
+
         // Select start state from all start states in the non deterministic automata.
         let mut start_state = Ubig::new();
-        for s in &self.start {
-            self.add_state(&mut start_state, *s);
-        }
-        for s in &self.end {
-            if start_state.bit_at(s) {
-                accept_states.push(0);
-                break;
-            }
-        }
+        (&self.end)
+            .into_iter()
+            .for_each(|s| self.add_state(&mut start_state, *s));
+        (&self.end)
+            .into_iter()
+            .filter(|s| start_state.bit_at(s))
+            .for_each(|_| accept_states.push(0));
         num_mapper.insert(start_state.clone(), bookmark);
         frontier.push_back(start_state.clone());
         bookmark += 1;

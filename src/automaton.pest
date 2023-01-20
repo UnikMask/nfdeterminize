@@ -1,0 +1,13 @@
+automaton = { "{" ~ TYPE ~ SEP ~ NUM ~ SEP ~ NUM ~ SEP ~ transitionArr ~ SEP ~ numArr ~ SEP ~ numArr ~ "}" }
+
+transition = { "(" ~ NUM ~ SEP ~ NUM ~ SEP ~ NUM ~ ")" }
+
+transitionArr = {"[" ~ ( (transition ~ (SEP ~ transition)*) | "") ~ "]"}
+numArr = { "[" ~ ((NUM ~ (SEP ~ NUM)*) | "")  ~ "]" }
+
+NUM = { ASCII_DIGIT+ }
+TYPE = { "det" | "nondet" }
+SEP = _{ "," }
+
+
+WHITESPACE = _{ " " }
