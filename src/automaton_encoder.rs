@@ -38,12 +38,14 @@ impl From<&str> for Automaton {
                 }
                 ret.set_transitions(table);
 
+                // Set start states.
                 let mut start: Vec<usize> = Vec::new();
                 for num in contents.next().unwrap().into_inner() {
                     start.push(str::parse(num.as_str()).unwrap());
                 }
                 ret.set_start_states(start);
 
+                // Set ends states.
                 let mut end: Vec<usize> = Vec::new();
                 for num in contents.next().unwrap().into_inner() {
                     end.push(str::parse(num.as_str()).unwrap());
@@ -56,12 +58,5 @@ impl From<&str> for Automaton {
                 Automaton::empty()
             }
         };
-
-        //let records = parse.into_inner();
-        //let mut next_record = records.next().expect("Automaton type not specified!");
-        //match next_record.as_rule() {
-        //    Rule::TYPE => match next_record.into_inner().next().e,
-        //    _ => unreachable!(),
-        //}
     }
 }
