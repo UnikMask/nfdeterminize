@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 
 use crate::ubig::Ubig;
 
-static N_THREADS: usize = 12;
+// static N_THREADS: usize = 12;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AutomatonType {
@@ -24,6 +24,34 @@ pub struct Automaton {
 }
 
 impl Automaton {
+    ///////////////////////
+    // Getters & Setters //
+    ///////////////////////
+
+    pub fn set_automaton_type(&mut self, t: AutomatonType) {
+        self.automaton_type = t;
+    }
+
+    pub fn set_size(&mut self, s: usize) {
+        self.size = s;
+    }
+
+    pub fn set_alphabet(&mut self, a: usize) {
+        self.alphabet = a;
+    }
+
+    pub fn set_transitions(&mut self, t: Vec<(usize, usize, usize)>) {
+        self.table = t;
+    }
+
+    pub fn set_start_states(&mut self, ss: Vec<usize>) {
+        self.start = ss;
+    }
+
+    pub fn set_end_states(&mut self, es: Vec<usize>) {
+        self.end = es;
+    }
+
     ////////////////////
     // Public methods //
     ////////////////////
@@ -130,20 +158,22 @@ impl Automaton {
         let mut bookmark = 0;
         let mut frontier: VecDeque<Ubig> = VecDeque::new();
 
-        let mut frontier_c: Vec<VecDeque<Ubig>> = Vec::with_capacity(N_THREADS + 1);
-        for i in 0..N_THREADS + 1 {
-            frontier_c[i] = VecDeque::new();
-        }
+        //let mut frontier_c: Vec<VecDeque<Ubig>> = Vec::with_capacity(N_THREADS + 1);
+        //for i in 0..N_THREADS + 1 {
+        //    frontier_c[i] = VecDeque::new();
+        //}
 
         // Select start state from all start states in the non deterministic automata.
         let mut start_state = Ubig::new();
-        (&self.end)
+        (&self.start)
             .into_iter()
             .for_each(|s| self.add_state(&mut start_state, *s));
-        (&self.end)
-            .into_iter()
-            .filter(|s| start_state.bit_at(s))
-            .for_each(|_| accept_states.push(0));
+        for s in &self.end {
+            if start_state.bit_at(s) {
+                accept_states.push(0);
+                break;
+            }
+        }
         num_mapper.insert(start_state.clone(), bookmark);
         frontier.push_back(start_state.clone());
         bookmark += 1;
