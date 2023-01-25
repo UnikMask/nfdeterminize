@@ -3,7 +3,6 @@ mod automaton_encoder;
 mod ubig;
 
 use automaton::Automaton;
-use automaton::AutomatonType;
 
 #[macro_use]
 extern crate pest_derive;

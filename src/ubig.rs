@@ -40,14 +40,6 @@ impl Ubig {
         Ubig { num: Vec::new() }
     }
 
-    fn from_seq(bit_list: &Vec<usize>) -> Ubig {
-        let mut ret = Ubig::new();
-        for bit in bit_list {
-            ret.set_to(&bit, true);
-        }
-        return ret;
-    }
-
     /// Get a Ubig's bit sequence.
     pub fn get_seq(&self) -> Vec<usize> {
         let mut ret: Vec<usize> = Vec::new();
@@ -67,12 +59,6 @@ impl Ubig {
         } else {
             return false;
         }
-    }
-
-    fn from_bit(bit: &usize) -> Ubig {
-        let mut ret = Ubig::new();
-        ret.flip(bit);
-        return ret;
     }
 
     // Flip a bit on given array position.
@@ -115,6 +101,22 @@ impl Ubig {
 mod ubig_tests {
 
     use super::Ubig;
+
+    // Helpher methods for testing - generates ubigs from a single bit or from sequences of bits.
+    impl Ubig {
+        fn from_bit(bit: &usize) -> Ubig {
+            let mut ret = Ubig::new();
+            ret.flip(bit);
+            return ret;
+        }
+        fn from_seq(bit_list: &Vec<usize>) -> Ubig {
+            let mut ret = Ubig::new();
+            for bit in bit_list {
+                ret.set_to(&bit, true);
+            }
+            return ret;
+        }
+    }
 
     #[test]
     fn test_clone() {
