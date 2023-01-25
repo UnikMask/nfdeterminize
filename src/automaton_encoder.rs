@@ -8,8 +8,8 @@ use crate::automaton::{Automaton, AutomatonType};
 #[grammar = "automaton.pest"]
 struct AutomatonParser;
 
-impl From<&str> for Automaton {
-    fn from(s: &str) -> Self {
+impl From<&String> for Automaton {
+    fn from(s: &String) -> Self {
         return match AutomatonParser::parse(Rule::automaton, s) {
             Ok(mut pairs) => {
                 let mut contents = pairs.next().unwrap().into_inner();
