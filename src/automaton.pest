@@ -1,11 +1,16 @@
-automaton = { "{" ~ TYPE ~ SEP ~ NUM ~ SEP ~ NUM ~ SEP ~ transitionArr ~ SEP ~ numArr ~ SEP ~ numArr ~ "}" }
+automaton = { "{" ~ "\"" ~ TYPE ~ "\"" ~ SEP ~ NUM ~ SEP ~ (NUM |  ( "\"" ~ LETTER_STR ~ "\"") ) ~ SEP ~ transitionArr ~ SEP ~ numArr ~ SEP ~ numArr ~ "}" }
 
 transition = { "(" ~ NUM ~ SEP ~ NUM ~ SEP ~ NUM ~ ")" }
 
-transitionArr = {"[" ~ ( (transition ~ (SEP ~ transition)*) | "") ~ "]"}
+letterTransitions = {"[" ~ ( (numArr ~ (SEP ~ numArr)*) | "") ~ "]"}
+
+transitionArr = {"[" ~ ((letterTransitions ~ (SEP ~ letterTransitions)*) | "") ~ "]"}
+
+
 numArr = { "[" ~ ((NUM ~ (SEP ~ NUM)*) | "")  ~ "]" }
 
 NUM = { ASCII_DIGIT+ }
+LETTER_STR = {('a'..'z'|'A'..'Z'|"@")+}
 TYPE = { "det" | "nondet" }
 SEP = _{ "," }
 
