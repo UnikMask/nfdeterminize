@@ -12,13 +12,21 @@ impl From<&String> for Automaton {
     fn from(s: &String) -> Self {
         return match AutomatonParser::parse(Rule::automaton, s) {
             Ok(mut pairs) => {
-                let mut contents = pairs.next().unwrap().into_inner();
+                // Get contents of automaton from automaton -> core -> inner
+                let mut contents = pairs
+                    .next()
+                    .unwrap()
+                    .into_inner()
+                    .next()
+                    .unwrap()
+                    .into_inner();
                 let mut ret = Automaton::empty();
 
                 // Get the pairs for all the properties of the automaton.
                 ret.set_automaton_type(match contents.next().unwrap().as_str() {
                     "det" => AutomatonType::Det,
                     "nondet" => AutomatonType::NonDet,
+                    "epsilon" => AutomatonType::NonDet,
                     _ => panic!("Unreachable code!"),
                 });
 
@@ -46,9 +54,23 @@ impl From<&String> for Automaton {
                     .into_iter()
                     .enumerate()
                 {
+                    let i_with_eps = match alphabet_parse.as_rule() {
+                        Rule::LETTER_STR => match alphabet_parse.as_str().chars().nth(i_a) {
+                            Some(letter) => match letter {
+                                '@' => 0,
+                                _ => i_a + 1,
+                            },
+                            None => i_a + 1,
+                        },
+                        _ => i_a + 1,
+                    };
                     for (i_s, s_in) in a.into_inner().into_iter().enumerate() {
                         for s_out in s_in.into_inner() {
-                            tuple_table.push((i_s, i_a + 1, str::parse(s_out.as_str()).unwrap()));
+                            tuple_table.push((
+                                i_s,
+                                i_with_eps,
+                                str::parse(s_out.as_str().trim()).unwrap(),
+                            ));
                         }
                     }
                 }
