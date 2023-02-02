@@ -2,7 +2,10 @@ mod automaton;
 mod automaton_encoder;
 mod ubig;
 
-use std::{env, fs};
+use std::{
+    env, fs,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use automaton::Automaton;
 
@@ -23,6 +26,18 @@ fn main() {
         fs::read_to_string(&args[1]).expect("Given file path does not exist or is not a file!");
 
     let new_dfa = Automaton::from(&contents.to_string());
-    println!("Minimising automata...");
+    println!("Minimising automata - timed...");
+    let start = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("")
+        .as_millis();
     println!("Hello, {:?}", new_dfa.determinized().minimized());
+    let end = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("")
+        .as_millis();
+    println!(
+        "Time taken: {:?} seconds",
+        f64::from((end as usize - start as usize) as i32) / f64::from(1000)
+    );
 }
