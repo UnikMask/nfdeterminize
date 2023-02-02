@@ -47,6 +47,7 @@ impl From<&String> for Automaton {
 
                 // Set transitions
                 let mut tuple_table: Vec<(usize, usize, usize)> = Vec::new();
+                let mut epsilon_increment = 1;
                 for (i_a, a) in contents
                     .next()
                     .unwrap()
@@ -57,17 +58,21 @@ impl From<&String> for Automaton {
                     let i_with_eps = match alphabet_parse.as_rule() {
                         Rule::LETTER_STR => match alphabet_parse.as_str().chars().nth(i_a) {
                             Some(letter) => match letter {
-                                '@' => 0,
-                                _ => i_a + 1,
+                                '@' => {
+                                    epsilon_increment = 0;
+                                    ret.set_alphabet(ret.get_alphabet() - 1);
+                                    0
+                                }
+                                _ => i_a + epsilon_increment,
                             },
-                            None => i_a + 1,
+                            None => i_a + epsilon_increment,
                         },
-                        _ => i_a + 1,
+                        _ => i_a + epsilon_increment,
                     };
                     for (i_s, s_in) in a.into_inner().into_iter().enumerate() {
                         for s_out in s_in.into_inner() {
                             tuple_table.push((
-                                i_s,
+                                i_s + 1,
                                 i_with_eps,
                                 str::parse(s_out.as_str().trim()).unwrap(),
                             ));
@@ -79,14 +84,14 @@ impl From<&String> for Automaton {
                 // Set start states.
                 let mut start: Vec<usize> = Vec::new();
                 for num in contents.next().unwrap().into_inner() {
-                    start.push(str::parse(num.as_str()).unwrap());
+                    start.push(str::parse(num.as_str().trim()).unwrap());
                 }
                 ret.set_start_states(start);
 
                 // Set ends states.
                 let mut end: Vec<usize> = Vec::new();
                 for num in contents.next().unwrap().into_inner() {
-                    end.push(str::parse(num.as_str()).unwrap());
+                    end.push(str::parse(num.as_str().trim()).unwrap());
                 }
                 ret.set_end_states(end);
                 ret

@@ -18,9 +18,11 @@ fn main() {
         panic!("Number of arguments must be 1!");
     }
 
+    println!("Parsing automata...");
     let contents =
         fs::read_to_string(&args[1]).expect("Given file path does not exist or is not a file!");
 
     let new_dfa = Automaton::from(&contents.to_string());
+    println!("Minimising automata...");
     println!("Hello, {:?}", new_dfa.determinized().minimized());
 }

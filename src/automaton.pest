@@ -1,4 +1,4 @@
-automaton = { ("{" ~ core ~ "}") | ("Automaton(" ~ core ~ ");") }
+automaton = { ("{" ~ core ~ "}") | ("Automaton(" ~ core ~ ")" ~ ";"*) }
 
 core = {"\"" ~ TYPE ~ "\"" ~ SEP ~ NUM ~ SEP ~ (NUM |  ( "\"" ~ LETTER_STR ~ "\"") ) ~ SEP ~ transitionArr ~ SEP ~ numArr ~ SEP ~ numArr }
 

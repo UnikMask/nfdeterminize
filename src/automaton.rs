@@ -36,6 +36,10 @@ impl Automaton {
         self.size = s;
     }
 
+    pub fn get_alphabet(&self) -> usize {
+        return self.alphabet;
+    }
+
     pub fn set_alphabet(&mut self, a: usize) {
         self.alphabet = a;
     }
@@ -157,6 +161,7 @@ impl Automaton {
         let mut num_mapper: HashMap<Ubig, usize> = HashMap::new();
         let mut bookmark = 0;
         let mut frontier: VecDeque<Ubig> = VecDeque::new();
+        println!("");
 
         //let mut frontier_c: Vec<VecDeque<Ubig>> = Vec::with_capacity(N_THREADS + 1);
         //for i in 0..N_THREADS + 1 {
@@ -164,10 +169,11 @@ impl Automaton {
         //}
 
         // Select start state from all start states in the non deterministic automata.
+        let transition_map = self.get_transition_map();
         let mut start_state = Ubig::new();
         (&self.start)
             .into_iter()
-            .for_each(|s| self.add_state(&mut start_state, *s));
+            .for_each(|s| self.add_state(&transition_map, &mut start_state, *s));
         for s in &self.end {
             if start_state.bit_at(s) {
                 accept_states.push(0);
@@ -180,15 +186,13 @@ impl Automaton {
 
         // Graph exploration - Depth-first search
         while let Some(next) = frontier.pop_front() {
-            let nd_transitions = self.get_transition_map();
-
             // Explore all new states for each alphabet letter.
             for a in 1..self.alphabet + 1 {
                 let mut new_s = Ubig::new();
                 for s in next.get_seq() {
-                    if let Some(s_trs) = nd_transitions.get(&(s, a)) {
+                    if let Some(s_trs) = transition_map.get(&(s, a)) {
                         for t in s_trs {
-                            self.add_state(&mut new_s, *t);
+                            self.add_state(&transition_map, &mut new_s, *t);
                         }
                     }
                 }
@@ -288,13 +292,12 @@ impl Automaton {
     ///////////////
 
     /// Add a state into a set of states, adding states connected via the empty char to the set with it.
-    fn add_state(&self, num: &mut Ubig, bit: usize) {
+    fn add_state(&self, map: &HashMap<(usize, usize), Vec<usize>>, num: &mut Ubig, bit: usize) {
         num.set_to(&bit, true);
-        let nd_transitions = self.get_transition_map();
-        if let Some(s_trs) = nd_transitions.get(&(bit, 0)) {
+        if let Some(s_trs) = map.get(&(bit, 0)) {
             for t in s_trs {
                 if !num.bit_at(&t) {
-                    self.add_state(num, *t);
+                    self.add_state(map, num, *t);
                 }
             }
         }
