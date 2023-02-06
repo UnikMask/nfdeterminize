@@ -4,17 +4,17 @@ core = {"\"" ~ TYPE ~ "\"" ~ SEP ~ NUM ~ SEP ~ (NUM |  ( "\"" ~ LETTER_STR ~ "\"
 
 transition = { "(" ~ NUM ~ SEP ~ NUM ~ SEP ~ NUM ~ ")" }
 
-letterTransitions = {"[" ~ ( (numArr ~ (SEP ~ numArr)*) | "") ~ "]"}
+letterTransitions = {"[" ~ numArr ~ (SEP ~ numArr)* ~ "]"}
 
-transitionArr = {"[" ~ ((letterTransitions ~ (SEP ~ letterTransitions)*) | "") ~ "]"}
+transitionArr = {"[" ~ letterTransitions ~ (SEP ~ letterTransitions)* ~ "]"}
 
 
 numArr = { "[" ~ ((NUM ~ (SEP ~ NUM)*) | "")  ~ "]" }
 
 NUM = { ASCII_DIGIT+ }
-LETTER_STR = {('a'..'z'|'A'..'Z'|"@")+}
+LETTER_STR = @{('a'..'z'|'A'..'Z'|"@")+}
 TYPE = { "det" | "nondet" | "epsilon" }
 SEP = _{ "," }
 
 
-WHITESPACE = _{ " " }
+WHITESPACE = _{ " "|"\n" }

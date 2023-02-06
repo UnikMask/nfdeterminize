@@ -60,6 +60,7 @@ impl From<&String> for Automaton {
                     .into_iter()
                     .enumerate()
                 {
+                    // Set the alphabet type
                     let i_with_eps = match alphabet_parse.as_rule() {
                         Rule::LETTER_STR => match alphabet_parse.as_str().chars().nth(i_a) {
                             Some(letter) => match letter {
@@ -74,24 +75,24 @@ impl From<&String> for Automaton {
                         },
                         _ => i_a + epsilon_increment,
                     };
-                    println!(
-                        "Letter {:?} - Table Capacity: {:?}",
-                        i_with_eps,
-                        tuple_table.capacity()
-                    );
+
+                    // Use barebones array parsing here as it is faster than pest's parsing speeds for arrays.
                     for (i_s, s_in) in a.into_inner().into_iter().enumerate() {
-                        println!(
-                            "\x1b[0;1ALetter {:?} - Table Capacity {:?} - State {:?}",
-                            i_with_eps,
-                            tuple_table.capacity(),
-                            i_s + 1
-                        );
-                        for s_out in s_in.into_inner() {
-                            tuple_table.push((
-                                i_s + 1,
-                                i_with_eps,
-                                str::parse(s_out.as_str().trim()).unwrap(),
-                            ));
+                        for (_, s_out) in s_in
+                            .as_str()
+                            .trim_matches(|c| {
+                                c == '[' || c == ']' || c == '\n' || c == ' ' || c == '\t'
+                            })
+                            .split(',')
+                            .enumerate()
+                        {
+                            if s_out.len() > 0 {
+                                tuple_table.push((
+                                    i_s + 1,
+                                    i_with_eps,
+                                    s_out.trim().parse::<usize>().unwrap(),
+                                ));
+                            }
                         }
                     }
                 }
