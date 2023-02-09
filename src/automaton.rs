@@ -115,6 +115,8 @@ impl Automaton {
     pub fn minimized(&self) -> Automaton {
         if let AutomatonType::NonDet = self.automaton_type {
             return self.clone();
+        } else if self.size <= 2 {
+            return self.clone();
         }
 
         let tuple = self.hopcroft_algo();
