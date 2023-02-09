@@ -298,11 +298,15 @@ impl Automaton {
 
     /// Add a state into a set of states, adding states connected via the empty char to the set with it.
     fn add_state(&self, map: &HashMap<(usize, usize), Vec<usize>>, num: &mut Ubig, bit: usize) {
-        num.set_to(&bit, true);
-        if let Some(s_trs) = map.get(&(bit, 0)) {
-            for t in s_trs {
-                if !num.bit_at(&t) {
-                    self.add_state(map, num, *t);
+        let mut queue: VecDeque<usize> = VecDeque::from([bit]);
+
+        while let Some(b) = queue.pop_front() {
+            if !num.bit_at(&b) {
+                num.set_to(&b, true);
+                if let Some(s_trs) = map.get(&(b, 0)) {
+                    for t in s_trs {
+                        queue.push_back(*t);
+                    }
                 }
             }
         }
