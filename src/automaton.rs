@@ -1,8 +1,11 @@
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::collections::VecDeque;
+use fasthash::xx::Hasher64;
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    hash::BuildHasherDefault,
+};
 
 use crate::ubig::Ubig;
+type HashMapXX<K, V> = HashMap<K, V, BuildHasherDefault<Hasher64>>;
 
 // static N_THREADS: usize = 12;
 
@@ -160,7 +163,7 @@ impl Automaton {
         // Rabin Scott Superset Construction Algorithm
         let mut transitions: Vec<(usize, usize, usize)> = Vec::new(); // All DFA transitions
         let mut accept_states: Vec<usize> = Vec::new(); // All accept states
-        let mut num_mapper: HashMap<Ubig, usize> = HashMap::new();
+        let mut num_mapper: HashMapXX<Ubig, usize> = HashMapXX::default();
         let mut bookmark = 0;
         let mut frontier: VecDeque<Ubig> = VecDeque::new();
         println!("");
