@@ -1,1 +1,3 @@
 /target
+automatons/*.nfa
+automatons/*.tmp
