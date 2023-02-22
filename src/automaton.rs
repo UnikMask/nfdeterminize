@@ -174,11 +174,11 @@ impl Automaton {
         //}
 
         // Select start state from all start states in the non deterministic automata.
-        let transition_map = self.get_transition_map();
+        let transition_arr = self.get_transition_array();
         let mut start_state = Ubig::new();
         (&self.start)
             .into_iter()
-            .for_each(|s| self.add_state(&transition_map, &mut start_state, *s));
+            .for_each(|s| self.add_state(&transition_arr, &mut start_state, *s));
         for s in &self.end {
             if start_state.bit_at(s) {
                 accept_states.push(0);
@@ -195,11 +195,11 @@ impl Automaton {
             for a in 1..self.alphabet + 1 {
                 let mut new_s = Ubig::new();
                 for s in next.get_seq() {
-                    if let Some(s_trs) = transition_map.get(&(s, a)) {
-                        for t in s_trs {
-                            self.add_state(&transition_map, &mut new_s, *t);
-                        }
-                    }
+                    let s_trs = &transition_arr[a][s];
+
+                    s_trs
+                        .into_iter()
+                        .for_each(|t| self.add_state(&transition_arr, &mut new_s, *t));
                 }
 
                 if !num_mapper.contains_key(&new_s) {
@@ -297,35 +297,37 @@ impl Automaton {
     ///////////////
 
     /// Add a state into a set of states, adding states connected via the empty char to the set with it.
-    fn add_state(&self, map: &HashMap<(usize, usize), Vec<usize>>, num: &mut Ubig, bit: usize) {
+    fn add_state(&self, arr: &Vec<Vec<HashSet<usize>>>, num: &mut Ubig, bit: usize) {
         let mut queue: VecDeque<usize> = VecDeque::from([bit]);
 
         while let Some(b) = queue.pop_front() {
             if !num.bit_at(&b) {
                 num.set_to(&b, true);
-                if let Some(s_trs) = map.get(&(b, 0)) {
-                    for t in s_trs {
-                        queue.push_back(*t);
-                    }
-                }
+
+                (&arr[0][b]).into_iter().for_each(|t| {
+                    queue.push_back(*t);
+                });
             }
         }
     }
 
     /// Get a hashmap of leading states from a given letter and original state.
-    fn get_transition_map(&self) -> HashMap<(usize, usize), Vec<usize>> {
-        let mut map: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
-
-        for transition in &self.table {
-            match map.get_mut(&(transition.0, transition.1)) {
-                Some(v) => v.push(transition.2),
-                None => {
-                    map.insert((transition.0, transition.1), vec![transition.2]);
-                }
+    fn get_transition_array(&self) -> Vec<Vec<HashSet<usize>>> {
+        //let mut map: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
+        let mut arr: Vec<Vec<HashSet<usize>>> = Vec::new();
+        for _ in 0..(self.alphabet + 1) {
+            let mut alphabet_arr: Vec<HashSet<usize>> = Vec::new();
+            for _ in 0..self.size + 1 {
+                alphabet_arr.push(HashSet::new());
             }
+            arr.push(alphabet_arr);
         }
 
-        return map;
+        for transition in &self.table {
+            arr[transition.1][transition.0].insert(transition.2);
+        }
+
+        return arr;
     }
 
     /// Get a map of all reverse transitions in the DFA.
