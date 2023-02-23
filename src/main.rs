@@ -1,5 +1,6 @@
 mod automaton;
 mod automaton_encoder;
+mod tpn;
 mod ubig;
 
 use std::{
