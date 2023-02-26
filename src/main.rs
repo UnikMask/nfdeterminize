@@ -1,6 +1,6 @@
 mod automaton;
 mod automaton_encoder;
-mod tpn;
+mod transition_graphs;
 mod ubig;
 
 use std::{
