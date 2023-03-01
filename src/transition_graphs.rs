@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::automaton::{Automaton, AutomatonType};
 
@@ -13,7 +13,9 @@ pub fn get_buffer_and_stack_aut(b: usize, n: usize) -> Automaton {
         buffer: vec![],
         stack: VecDeque::new(),
     };
-    let mut states_set: HashSet<BnSState> = HashSet::from([start_state.clone()]);
+    let mut count = 1;
+    let mut states_set: HashMap<BnSState, usize> = HashMap::from([(start_state.clone(), 0)]);
+    let mut transitions: Vec<(usize, usize, usize)> = Vec::new();
     let mut q: VecDeque<BnSState> = VecDeque::from([start_state]);
 
     while let Some(s) = q.pop_front() {
@@ -24,9 +26,11 @@ pub fn get_buffer_and_stack_aut(b: usize, n: usize) -> Automaton {
                 stack: s.stack.iter().map(|l| decrease_ranks(*l, a)).collect(),
             };
             new_state.stack.pop_front();
-            if !states_set.contains(&new_state) {
-                states_set.insert(new_state.clone());
+            if !states_set.contains_key(&new_state) {
+                states_set.insert(new_state.clone(), count);
+                transitions.push((*states_set.get(&s).unwrap(), a, count));
                 q.push_back(new_state);
+                count += 1;
             }
         }
 
@@ -40,9 +44,11 @@ pub fn get_buffer_and_stack_aut(b: usize, n: usize) -> Automaton {
                         .collect(),
                     stack: s.stack.clone(),
                 };
-                if !states_set.contains(&new_state) {
-                    states_set.insert(new_state.clone());
+                if !states_set.contains_key(&new_state) {
+                    states_set.insert(new_state.clone(), count);
                     q.push_back(new_state);
+                    transitions.push((*states_set.get(&s).unwrap(), 0, count));
+                    count += 1;
                 }
             });
         }
@@ -51,15 +57,23 @@ pub fn get_buffer_and_stack_aut(b: usize, n: usize) -> Automaton {
             s.buffer.iter().for_each(|l| {
                 let mut new_state = s.clone();
                 new_state.buffer.push(s.buffer.len() + s.stack.len() + 1);
-                if !states_set.contains(&new_state) {
-                    states_set.insert(new_state.clone());
+                if !states_set.contains_key(&new_state) {
+                    states_set.insert(new_state.clone(), count);
                     q.push_back(new_state);
+                    transitions.push((*states_set.get(&s).unwrap(), 0, count));
+                    count += 1;
                 }
             });
         }
     }
-
-    return Automaton::empty();
+    Automaton::new(
+        AutomatonType::NonDet,
+        count,
+        b + n - 1,
+        transitions,
+        Vec::from([0]),
+        Vec::from([0]),
+    )
 }
 
 fn decrease_ranks(l: usize, a: usize) -> usize {
