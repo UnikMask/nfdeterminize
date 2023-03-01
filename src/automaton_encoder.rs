@@ -4,7 +4,7 @@ use pest::Parser;
 
 use crate::automaton::{Automaton, AutomatonType};
 
-#[derive(Parser)]
+#[derive(pest_derive::Parser)]
 #[grammar = "automaton.pest"]
 struct AutomatonParser;
 
