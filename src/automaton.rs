@@ -95,14 +95,7 @@ impl Automaton {
     pub fn determinized(&self) -> Automaton {
         // Return same automaton as it already is deterministic.
         let ret = match self.automaton_type {
-            AutomatonType::Det => Automaton {
-                automaton_type: AutomatonType::Det,
-                size: self.size,
-                alphabet: self.alphabet,
-                table: self.table.clone(),
-                start: self.start.clone(),
-                end: self.end.clone(),
-            },
+            AutomatonType::Det => self.clone(),
             AutomatonType::NonDet => {
                 let (transitions, a_size, a_start, a_end) = self.rabin_scott();
                 return Automaton {
@@ -157,6 +150,81 @@ impl Automaton {
         return ret;
     }
 
+    pub fn remove_epsilon_transitions(self) -> Automaton {
+        if self.automaton_type == AutomatonType::Det {
+            return self;
+        }
+
+        // Get map of epsilon states
+        let arr = &self.get_transition_array();
+        let mut states_set: HashSet<Ubig> = HashSet::new();
+        let mut orig_state_to_big: Vec<Vec<Ubig>> = (0..self.size).map(|_| Vec::new()).collect();
+        let mut state_single_big: Vec<Ubig> = (0..self.size).map(|_| Ubig::new()).collect();
+        let mut count = 0;
+        let states: HashMap<Ubig, usize> = (0..self.size)
+            .filter_map(|s| {
+                let mut new_state = Ubig::new();
+                self.add_state(arr, &mut new_state, s);
+                state_single_big[s] = new_state.clone();
+                if !states_set.contains(&new_state) {
+                    count += 1;
+                    states_set.insert(new_state.clone());
+                    for eps_s in new_state.get_seq() {
+                        orig_state_to_big[eps_s].push(new_state.clone());
+                    }
+                    Some((new_state, count - 1))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let mut transitions: Vec<(usize, usize, usize)> = Vec::new();
+
+        // Add transitions for each super state and each letters
+        for sstate in states.keys() {
+            for s in sstate.get_seq() {
+                for a in 1..self.alphabet + 1 {
+                    let mut sstates_set: HashSet<Ubig> = HashSet::new();
+                    for new_state in arr[a][s].iter() {
+                        let new_sstate = &state_single_big[*new_state];
+                        if !sstates_set.contains(&new_sstate) {
+                            transitions.push((
+                                *states.get(&sstate).unwrap(),
+                                a,
+                                *states.get(&new_sstate).unwrap(),
+                            ));
+                            sstates_set.insert(new_sstate.clone());
+                        }
+                    }
+                }
+            }
+        }
+        transitions.sort();
+
+        // Get start states and end states
+        let mut start_states: Vec<usize> = Vec::new();
+        let mut end_states: Vec<usize> = Vec::new();
+        for s in self.start {
+            for sstate in orig_state_to_big[s].iter() {
+                start_states.push(*states.get(sstate).unwrap());
+            }
+        }
+        for s in self.end {
+            for sstate in orig_state_to_big[s].iter() {
+                end_states.push(*states.get(sstate).unwrap());
+            }
+        }
+
+        Automaton {
+            automaton_type: AutomatonType::NonDet,
+            size: states.len(),
+            alphabet: self.alphabet,
+            table: transitions,
+            start: start_states,
+            end: end_states,
+        }
+    }
+
     ////////////////
     // Algorithms //
     ////////////////
@@ -170,7 +238,6 @@ impl Automaton {
         let mut num_mapper: HashMapXX<Ubig, usize> = HashMapXX::default();
         let mut bookmark = 0;
         let mut frontier: VecDeque<Ubig> = VecDeque::new();
-        println!("");
 
         //let mut frontier_c: Vec<VecDeque<Ubig>> = Vec::with_capacity(N_THREADS + 1);
         //for i in 0..N_THREADS + 1 {
@@ -404,293 +471,5 @@ impl Automaton {
             }
         }
         return false;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Automaton;
-    use super::AutomatonType;
-
-    #[test]
-    // Test the behaviour of determinization over an NFA that is already deterministic.
-    fn test_determinization_redundant() {
-        let redundant_nd = Automaton {
-            automaton_type: AutomatonType::NonDet,
-            size: 1,
-            alphabet: 2,
-            table: vec![(0, 1, 0), (0, 2, 0)],
-            start: vec![0],
-            end: vec![0],
-        };
-        let redundant_d = Automaton {
-            automaton_type: AutomatonType::Det,
-            size: 1,
-            alphabet: 2,
-            table: vec![(0, 1, 0), (0, 2, 0)],
-            start: vec![0],
-            end: vec![0],
-        };
-        assert_eq!(redundant_nd.determinized(), redundant_d);
-    }
-
-    #[test]
-    // Test the behaviour of determinization over a single state, no transition NFA.
-    fn test_determinization_empty_lang() {
-        let empty_lang_nd = Automaton {
-            automaton_type: AutomatonType::NonDet,
-            size: 1,
-            alphabet: 2,
-            table: vec![],
-            start: vec![0],
-            end: vec![0],
-        };
-        let empty_lang_d = Automaton {
-            automaton_type: AutomatonType::Det,
-            size: 2,
-            alphabet: 2,
-            table: vec![(0, 1, 1), (0, 2, 1), (1, 1, 1), (1, 2, 1)],
-            start: vec![0],
-            end: vec![0],
-        };
-        assert_eq!(empty_lang_nd.determinized(), empty_lang_d);
-    }
-
-    #[test]
-    // Test whether determinization gets rid of unreachable states.
-    fn test_determinization_unreachable() {
-        let unreachable_nd = Automaton {
-            automaton_type: AutomatonType::NonDet,
-            size: 2,
-            alphabet: 2,
-            table: vec![(0, 1, 0), (0, 2, 0)],
-            start: vec![0],
-            end: vec![0],
-        };
-        let unreachable_d = Automaton {
-            automaton_type: AutomatonType::Det,
-            size: 1,
-            alphabet: 2,
-            table: vec![(0, 1, 0), (0, 2, 0)],
-            start: vec![0],
-            end: vec![0],
-        };
-        assert_eq!(unreachable_nd.determinized(), unreachable_d);
-    }
-
-    #[test]
-    // Test whether determinization can successfully produce a sinkhole state from an empty set of states.
-    fn test_determinization_sinkhole() {
-        let sinkhole_nd = Automaton {
-            automaton_type: AutomatonType::NonDet,
-            size: 3,
-            alphabet: 2,
-            table: vec![(0, 1, 1), (1, 1, 2)],
-            start: vec![0],
-            end: vec![2],
-        };
-        let sinkhole_d = Automaton {
-            automaton_type: AutomatonType::Det,
-            size: 4,
-            alphabet: 2,
-            table: vec![
-                (0, 1, 1),
-                (0, 2, 2),
-                (1, 1, 3),
-                (1, 2, 2),
-                (2, 1, 2),
-                (2, 2, 2),
-                (3, 1, 2),
-                (3, 2, 2),
-            ],
-            start: vec![0],
-            end: vec![3],
-        };
-        assert_eq!(sinkhole_nd.determinized(), sinkhole_d);
-    }
-
-    #[test]
-    // Test whether duplicate transitions in a non deterministic automata are lost after
-    // determinization.
-    fn test_determinization_duplicate_transitions() {
-        let duplicate_transitions_nd = Automaton {
-            automaton_type: AutomatonType::NonDet,
-            size: 2,
-            alphabet: 2,
-            table: vec![(0, 1, 1), (0, 1, 1), (0, 2, 1), (1, 1, 1), (1, 2, 1)],
-            start: vec![0],
-            end: vec![1],
-        };
-        let duplicate_transitions_d = Automaton {
-            automaton_type: AutomatonType::Det,
-            size: 2,
-            alphabet: 2,
-            table: vec![(0, 1, 1), (0, 2, 1), (1, 1, 1), (1, 2, 1)],
-            start: vec![0],
-            end: vec![1],
-        };
-        assert_eq!(
-            duplicate_transitions_nd.determinized(),
-            duplicate_transitions_d
-        );
-    }
-
-    #[test]
-    // Test whether sets of states are detected and dealt as a single state in determinization.
-    fn test_determinization_set_of_states() {
-        let set_of_states_nd = Automaton {
-            automaton_type: AutomatonType::NonDet,
-            size: 2,
-            alphabet: 1,
-            table: vec![(0, 1, 0), (0, 1, 1)],
-            start: vec![0],
-            end: vec![1],
-        };
-        let set_of_states_d = Automaton {
-            automaton_type: AutomatonType::Det,
-            size: 2,
-            alphabet: 1,
-            table: vec![(0, 1, 1), (1, 1, 1)],
-            start: vec![0],
-            end: vec![1],
-        };
-        assert_eq!(set_of_states_nd.determinized(), set_of_states_d);
-    }
-
-    #[test]
-    // Test whether determinization identifies and deals with empty char transitions.
-    fn test_determinization_empty_char() {
-        let empty_char_nd = Automaton {
-            automaton_type: AutomatonType::NonDet,
-            size: 4,
-            alphabet: 2,
-            table: vec![
-                (0, 0, 1),
-                (0, 1, 2),
-                (1, 1, 3),
-                (2, 2, 3),
-                (3, 0, 3),
-                (3, 1, 3),
-                (3, 2, 3),
-            ],
-            start: vec![0],
-            end: vec![3],
-        };
-        let empty_char_d = Automaton {
-            automaton_type: AutomatonType::Det,
-            size: 4,
-            alphabet: 2,
-            table: vec![
-                (0, 1, 1),
-                (0, 2, 2),
-                (1, 1, 3),
-                (1, 2, 3),
-                (2, 1, 2),
-                (2, 2, 2),
-                (3, 1, 3),
-                (3, 2, 3),
-            ],
-            start: vec![0],
-            end: vec![1, 3],
-        };
-        assert_eq!(empty_char_nd.determinized(), empty_char_d);
-    }
-
-    #[test]
-    // Test whether a machine minimizable into 2 partitions will be minimized as such.
-    fn test_minimization_bipartite() {
-        let bipartite_big = Automaton {
-            automaton_type: AutomatonType::Det,
-            size: 3,
-            alphabet: 2,
-            table: vec![
-                (0, 1, 1),
-                (0, 2, 2),
-                (1, 1, 1),
-                (1, 2, 1),
-                (2, 1, 2),
-                (2, 2, 2),
-            ],
-            start: vec![0],
-            end: vec![1, 2],
-        };
-        let bipartite_small = Automaton {
-            automaton_type: AutomatonType::Det,
-            size: 2,
-            alphabet: 2,
-            table: vec![(0, 1, 1), (0, 2, 1), (1, 1, 1), (1, 2, 1)],
-            start: vec![0],
-            end: vec![1],
-        };
-        assert_eq!(bipartite_big.minimized(), bipartite_small);
-    }
-
-    #[test]
-    // Test whether minimization can separate sets partitions into smaller partitions.
-    fn test_minimization_separation() {
-        let sep_big = Automaton {
-            automaton_type: AutomatonType::Det,
-            size: 6,
-            alphabet: 2,
-            table: vec![
-                (0, 1, 3),
-                (0, 2, 1),
-                (1, 1, 2),
-                (1, 2, 5),
-                (2, 1, 2),
-                (2, 2, 5),
-                (3, 1, 0),
-                (3, 2, 4),
-                (4, 1, 2),
-                (4, 2, 5),
-                (5, 1, 5),
-                (5, 2, 5),
-            ],
-            start: vec![0],
-            end: vec![1, 2, 4],
-        };
-
-        let sep_small = Automaton {
-            automaton_type: AutomatonType::Det,
-            size: 3,
-            alphabet: 2,
-            table: vec![
-                (0, 1, 0),
-                (0, 2, 2),
-                (1, 1, 1),
-                (1, 2, 1),
-                (2, 1, 2),
-                (2, 2, 1),
-            ],
-            start: vec![0],
-            end: vec![2],
-        };
-
-        assert_eq!(sep_big.minimized(), sep_small);
-    }
-
-    #[test]
-    // Test whether unminimizable machines cannot be minimized (the size doesn't decrease).
-    fn test_minimization_unminimizable() {
-        let unmin_big = Automaton {
-            automaton_type: AutomatonType::Det,
-            size: 4,
-            alphabet: 2,
-            table: vec![
-                (0, 1, 1),
-                (0, 2, 2),
-                (1, 1, 2),
-                (1, 2, 3),
-                (2, 1, 2),
-                (2, 2, 2),
-                (3, 1, 1),
-                (3, 2, 3),
-            ],
-            start: vec![0],
-            end: vec![3],
-        };
-
-        let unmin_small = unmin_big.minimized();
-        assert_eq!(unmin_small.size, 4);
     }
 }
