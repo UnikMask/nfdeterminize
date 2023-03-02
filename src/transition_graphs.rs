@@ -78,6 +78,75 @@ pub fn get_buffer_and_stack_aut(b: usize, n: usize) -> Automaton {
     )
 }
 
+pub fn get_two_stack_aut(n1: usize, n2: usize) -> Automaton {
+    #[derive(Debug, PartialEq, Eq, Hash, Clone)]
+    struct SnSState {
+        stack1: VecDeque<usize>,
+        stack2: VecDeque<usize>,
+    }
+
+    let start_state = SnSState {
+        stack1: VecDeque::new(),
+        stack2: VecDeque::new(),
+    };
+    let mut count = 1;
+    let mut states_set: HashMap<SnSState, usize> = HashMap::from([(start_state.clone(), 0)]);
+    let mut transitions: Vec<(usize, usize, usize)> = Vec::new();
+    let mut q: VecDeque<SnSState> = VecDeque::from([start_state]);
+
+    // Closure that adds given transition and adds new state to queue if not in states set.
+    let mut resolve_new_state =
+        |new_state: SnSState, l: usize, old_state: &SnSState, queue: &mut VecDeque<SnSState>| {
+            if !states_set.contains_key(&new_state) {
+                states_set.insert(new_state.clone(), count);
+                queue.push_back(new_state.clone());
+                count += 1;
+            }
+            transitions.push((
+                *states_set.get(old_state).unwrap(),
+                l,
+                *states_set.get(&new_state).unwrap(),
+            ));
+        };
+
+    while let Some(s) = q.pop_front() {
+        if s.stack2.len() > 0 {
+            let a = *s.stack2.front().unwrap();
+            let mut new_state = SnSState {
+                stack1: s.stack1.iter().map(|l| decrease_ranks(*l, a)).collect(),
+                stack2: s.stack2.iter().map(|l| decrease_ranks(*l, a)).collect(),
+            };
+            new_state.stack2.pop_front();
+            resolve_new_state(new_state, a, &s, &mut q);
+        }
+
+        if s.stack2.len() < n2 && s.stack1.len() > 0 {
+            let mut new_state = s.clone();
+            new_state
+                .stack2
+                .push_front(new_state.stack1.pop_front().unwrap());
+            resolve_new_state(new_state, 0, &s, &mut q);
+        }
+
+        if s.stack1.len() < n1 {
+            let mut new_state = s.clone();
+            new_state
+                .stack1
+                .push_front(s.stack1.len() + s.stack2.len() + 1);
+            resolve_new_state(new_state, 0, &s, &mut q);
+        }
+    }
+
+    Automaton::new(
+        AutomatonType::NonDet,
+        count,
+        n1 + n2 - 1,
+        transitions,
+        Vec::from([0]),
+        Vec::from([0]),
+    )
+}
+
 fn decrease_ranks(l: usize, a: usize) -> usize {
     if l > a {
         l - 1
