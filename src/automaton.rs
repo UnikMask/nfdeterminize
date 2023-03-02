@@ -154,6 +154,7 @@ impl Automaton {
         if self.automaton_type == AutomatonType::Det {
             return self;
         }
+        println!("Generating super states... ");
 
         // Get map of epsilon states
         let arr = &self.get_transition_array();
@@ -161,14 +162,14 @@ impl Automaton {
         let mut orig_state_to_big: Vec<Vec<Ubig>> = (0..self.size).map(|_| Vec::new()).collect();
         let mut state_single_big: Vec<Ubig> = (0..self.size).map(|_| Ubig::new()).collect();
         let mut count = 0;
-        let states: HashMap<Ubig, usize> = (0..self.size)
+        let states: HashMapXX<Ubig, usize> = (0..self.size)
             .filter_map(|s| {
                 let mut new_state = Ubig::new();
                 self.add_state(arr, &mut new_state, s);
-                state_single_big[s] = new_state.clone();
                 if !states_set.contains(&new_state) {
                     count += 1;
                     states_set.insert(new_state.clone());
+                    state_single_big[s] = new_state.clone();
                     for eps_s in new_state.get_seq() {
                         orig_state_to_big[eps_s].push(new_state.clone());
                     }
@@ -179,27 +180,24 @@ impl Automaton {
             })
             .collect();
         let mut transitions: Vec<(usize, usize, usize)> = Vec::new();
+        println!("Generating transitions... ");
 
         // Add transitions for each super state and each letters
-        for sstate in states.keys() {
+        for (sstate, ss_num) in states.iter() {
             for s in sstate.get_seq() {
                 for a in 1..self.alphabet + 1 {
                     let mut sstates_set: HashSet<Ubig> = HashSet::new();
                     for new_state in arr[a][s].iter() {
                         let new_sstate = &state_single_big[*new_state];
                         if !sstates_set.contains(&new_sstate) {
-                            transitions.push((
-                                *states.get(&sstate).unwrap(),
-                                a,
-                                *states.get(&new_sstate).unwrap(),
-                            ));
+                            transitions.push((*ss_num, a, *states.get(&new_sstate).unwrap()));
                             sstates_set.insert(new_sstate.clone());
                         }
                     }
                 }
             }
         }
-        transitions.sort();
+        print!("Generating start and end states... ");
 
         // Get start states and end states
         let mut start_states: Vec<usize> = Vec::new();
