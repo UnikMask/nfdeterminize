@@ -277,25 +277,4 @@ mod tests {
         let unmin_small = unmin_big.minimized();
         assert_eq!(unmin_small.get_size(), 4);
     }
-
-    #[test]
-    fn test_epsilon_removal() {
-        let epsilon_nfa = Automaton::new(
-            AutomatonType::NonDet,
-            3,
-            2,
-            vec![(0, 0, 2), (0, 1, 1), (1, 2, 2), (2, 2, 1)],
-            vec![0],
-            vec![2],
-        );
-        let final_nfa = Automaton::new(
-            AutomatonType::NonDet,
-            3,
-            2,
-            vec![(0, 1, 1), (0, 2, 1), (1, 2, 2), (2, 2, 1)],
-            vec![0],
-            vec![0, 2],
-        );
-        assert_eq!(epsilon_nfa.remove_epsilon_transitions(), final_nfa);
-    }
 }

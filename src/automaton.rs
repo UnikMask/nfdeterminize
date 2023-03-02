@@ -150,79 +150,6 @@ impl Automaton {
         return ret;
     }
 
-    pub fn remove_epsilon_transitions(self) -> Automaton {
-        if self.automaton_type == AutomatonType::Det {
-            return self;
-        }
-        println!("Generating super states... ");
-
-        // Get map of epsilon states
-        let arr = &self.get_transition_array();
-        let mut states_set: HashSet<Ubig> = HashSet::new();
-        let mut orig_state_to_big: Vec<Vec<Ubig>> = (0..self.size).map(|_| Vec::new()).collect();
-        let mut state_single_big: Vec<Ubig> = (0..self.size).map(|_| Ubig::new()).collect();
-        let mut count = 0;
-        let states: HashMapXX<Ubig, usize> = (0..self.size)
-            .filter_map(|s| {
-                let mut new_state = Ubig::new();
-                self.add_state(arr, &mut new_state, s);
-                if !states_set.contains(&new_state) {
-                    count += 1;
-                    states_set.insert(new_state.clone());
-                    state_single_big[s] = new_state.clone();
-                    for eps_s in new_state.get_seq() {
-                        orig_state_to_big[eps_s].push(new_state.clone());
-                    }
-                    Some((new_state, count - 1))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        let mut transitions: Vec<(usize, usize, usize)> = Vec::new();
-        println!("Generating transitions... ");
-
-        // Add transitions for each super state and each letters
-        for (sstate, ss_num) in states.iter() {
-            for s in sstate.get_seq() {
-                for a in 1..self.alphabet + 1 {
-                    let mut sstates_set: HashSet<Ubig> = HashSet::new();
-                    for new_state in arr[a][s].iter() {
-                        let new_sstate = &state_single_big[*new_state];
-                        if !sstates_set.contains(&new_sstate) {
-                            transitions.push((*ss_num, a, *states.get(&new_sstate).unwrap()));
-                            sstates_set.insert(new_sstate.clone());
-                        }
-                    }
-                }
-            }
-        }
-        print!("Generating start and end states... ");
-
-        // Get start states and end states
-        let mut start_states: Vec<usize> = Vec::new();
-        let mut end_states: Vec<usize> = Vec::new();
-        for s in self.start {
-            for sstate in orig_state_to_big[s].iter() {
-                start_states.push(*states.get(sstate).unwrap());
-            }
-        }
-        for s in self.end {
-            for sstate in orig_state_to_big[s].iter() {
-                end_states.push(*states.get(sstate).unwrap());
-            }
-        }
-
-        Automaton {
-            automaton_type: AutomatonType::NonDet,
-            size: states.len(),
-            alphabet: self.alphabet,
-            table: transitions,
-            start: start_states,
-            end: end_states,
-        }
-    }
-
     ////////////////
     // Algorithms //
     ////////////////
@@ -245,9 +172,10 @@ impl Automaton {
         // Select start state from all start states in the non deterministic automata.
         let transition_arr = self.get_transition_array();
         let mut start_state = Ubig::new();
+        let mut cache: Vec<Option<Ubig>> = (0..self.size).map(|_| None).collect();
         (&self.start)
             .into_iter()
-            .for_each(|s| self.add_state(&transition_arr, &mut start_state, *s));
+            .for_each(|s| self.add_state(&transition_arr, &mut start_state, *s, &mut cache));
         for s in &self.end {
             if start_state.bit_at(s) {
                 accept_states.push(0);
@@ -266,9 +194,9 @@ impl Automaton {
                 for s in next.get_seq() {
                     let s_trs = &transition_arr[a][s];
 
-                    s_trs
-                        .into_iter()
-                        .for_each(|t| self.add_state(&transition_arr, &mut new_s, *t));
+                    s_trs.into_iter().for_each(|t| {
+                        self.add_state(&transition_arr, &mut new_s, *t, &mut cache);
+                    });
                 }
 
                 if !num_mapper.contains_key(&new_s) {
@@ -366,17 +294,41 @@ impl Automaton {
     ///////////////
 
     /// Add a state into a set of states, adding states connected via the empty char to the set with it.
-    fn add_state(&self, arr: &Vec<Vec<HashSet<usize>>>, num: &mut Ubig, bit: usize) {
-        let mut queue: VecDeque<usize> = VecDeque::from([bit]);
+    fn add_state(
+        &self,
+        arr: &Vec<Vec<HashSet<usize>>>,
+        num: &mut Ubig,
+        bit: usize,
+        cache: &mut Vec<Option<Ubig>>,
+    ) {
+        //cache_option = None;
+        let mut extras = Ubig::new();
+        if let Some(cache_state) = &cache[bit] {
+            println!("Cache found for {bit:?}!");
+            extras = cache_state.clone();
+        } else {
+            let mut queue: VecDeque<usize> = VecDeque::from([bit]);
+            while let Some(b) = queue.pop_front() {
+                if !extras.bit_at(&b) {
+                    extras.set_to(&b, true);
 
-        while let Some(b) = queue.pop_front() {
-            if !num.bit_at(&b) {
-                num.set_to(&b, true);
-
-                (&arr[0][b]).into_iter().for_each(|t| {
-                    queue.push_back(*t);
-                });
+                    if let Some(cache_state) = &cache[b] {
+                        println!("Cached bit found - {b:?}");
+                        for c_b in cache_state.get_seq() {
+                            extras.set_to(&c_b, true);
+                        }
+                    } else {
+                        println!("Cache not found for {b:?}!");
+                        (&arr[0][b]).into_iter().for_each(|t| {
+                            queue.push_back(*t);
+                        });
+                    }
+                }
             }
+            cache[bit] = Some(extras.clone());
+        }
+        for b in extras.get_seq() {
+            num.set_to(&b, true);
         }
     }
 

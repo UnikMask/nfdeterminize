@@ -110,7 +110,7 @@ enum AutomatonFormat {
 fn main() {
     let clap_args = ProgramArguments::parse();
 
-    let mut automaton = clap_args.get_automaton();
+    let automaton = clap_args.get_automaton();
     if clap_args.verbose {
         println!("Automaton size: {:?}", automaton.get_size());
     }
@@ -119,14 +119,6 @@ fn main() {
         .duration_since(UNIX_EPOCH)
         .expect("")
         .as_millis();
-
-    if clap_args.verbose {
-        println!("Removing epsilong transitions... ");
-    }
-    automaton = automaton.remove_epsilon_transitions();
-    if clap_args.verbose {
-        println!("Automaton size: {:?}", automaton.get_size());
-    }
 
     let final_dfa = match clap_args.action {
         Action::Run { .. } => {
