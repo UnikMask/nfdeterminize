@@ -10,7 +10,7 @@ use std::{
 
 use automaton::Automaton;
 use clap::Parser;
-use transition_graphs::get_buffer_and_stack_aut;
+use transition_graphs::{get_buffer_and_stack_aut, get_two_stack_aut};
 
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -60,7 +60,7 @@ impl ProgramArguments {
             }
             AutomatonFormat::TwoStack { n1, n2 } => {
                 self.print_verbose("Generating two-stack automata...");
-                get_buffer_and_stack_aut(*n1, *n2)
+                get_two_stack_aut(*n1, *n2)
             }
         }
     }
@@ -104,7 +104,7 @@ fn main() {
 
     let automaton = clap_args.get_automaton();
     if clap_args.verbose {
-        println!("Original Automaton: \n{:?}", automaton);
+        println!("Automaton size: {:?}", automaton.get_size());
     }
 
     let start = SystemTime::now()
@@ -116,6 +116,9 @@ fn main() {
         Action::Run { .. } => {
             clap_args.print_verbose("Determinizing automata...");
             let new_dfa = automaton.determinized();
+            if clap_args.verbose {
+                println!("Intermediate Automaton Size: {:?}", new_dfa.get_size());
+            }
             clap_args.print_verbose("Minimizing automata...");
             new_dfa.minimized()
         }
