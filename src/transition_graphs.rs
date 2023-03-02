@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 
 use crate::automaton::{Automaton, AutomatonType};
 
@@ -18,52 +18,54 @@ pub fn get_buffer_and_stack_aut(b: usize, n: usize) -> Automaton {
     let mut transitions: Vec<(usize, usize, usize)> = Vec::new();
     let mut q: VecDeque<BnSState> = VecDeque::from([start_state]);
 
+    // Closure that adds given transition and adds new state to queue if not in states set.
+    let mut resolve_new_state =
+        |new_state: BnSState, l: usize, old_state: &BnSState, queue: &mut VecDeque<BnSState>| {
+            if !states_set.contains_key(&new_state) {
+                states_set.insert(new_state.clone(), count);
+                queue.push_back(new_state.clone());
+                count += 1;
+            }
+            transitions.push((
+                *states_set.get(old_state).unwrap(),
+                l,
+                *states_set.get(&new_state).unwrap(),
+            ));
+        };
+
     while let Some(s) = q.pop_front() {
+        // Move token from stack into output stream
         if s.stack.len() != 0 {
-            let a = s.stack[0];
+            let a = *s.stack.front().unwrap();
             let mut new_state = BnSState {
                 buffer: s.buffer.iter().map(|l| decrease_ranks(*l, a)).collect(),
                 stack: s.stack.iter().map(|l| decrease_ranks(*l, a)).collect(),
             };
             new_state.stack.pop_front();
-            if !states_set.contains_key(&new_state) {
-                states_set.insert(new_state.clone(), count);
-                transitions.push((*states_set.get(&s).unwrap(), a, count));
-                q.push_back(new_state);
-                count += 1;
-            }
+            resolve_new_state(new_state, a, &s, &mut q);
         }
 
+        // Move token from buffer into stack
         if s.buffer.len() != 0 && s.stack.len() < n {
             s.buffer.iter().for_each(|l| {
-                let new_state = BnSState {
+                let mut new_state = BnSState {
                     buffer: s
                         .buffer
                         .iter()
-                        .filter_map(|i| if i != l { Some(*l) } else { None })
+                        .filter_map(|i| if i != l { Some(*i) } else { None })
                         .collect(),
                     stack: s.stack.clone(),
                 };
-                if !states_set.contains_key(&new_state) {
-                    states_set.insert(new_state.clone(), count);
-                    q.push_back(new_state);
-                    transitions.push((*states_set.get(&s).unwrap(), 0, count));
-                    count += 1;
-                }
+                new_state.stack.push_front(*l);
+                resolve_new_state(new_state, 0, &s, &mut q);
             });
         }
 
+        // Move token from input stream into buffer.
         if s.buffer.len() < b {
-            s.buffer.iter().for_each(|l| {
-                let mut new_state = s.clone();
-                new_state.buffer.push(s.buffer.len() + s.stack.len() + 1);
-                if !states_set.contains_key(&new_state) {
-                    states_set.insert(new_state.clone(), count);
-                    q.push_back(new_state);
-                    transitions.push((*states_set.get(&s).unwrap(), 0, count));
-                    count += 1;
-                }
-            });
+            let mut new_state = s.clone();
+            new_state.buffer.push(s.buffer.len() + s.stack.len() + 1);
+            resolve_new_state(new_state, 0, &s, &mut q);
         }
     }
     Automaton::new(
