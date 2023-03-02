@@ -103,6 +103,9 @@ fn main() {
     let clap_args = ProgramArguments::parse();
 
     let automaton = clap_args.get_automaton();
+    if clap_args.verbose {
+        println!("Original Automaton: \n{:?}", automaton);
+    }
 
     let start = SystemTime::now()
         .duration_since(UNIX_EPOCH)
