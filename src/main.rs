@@ -110,7 +110,7 @@ enum AutomatonFormat {
 fn main() {
     let clap_args = ProgramArguments::parse();
 
-    let automaton = clap_args.get_automaton();
+    let mut automaton = clap_args.get_automaton();
     if clap_args.verbose {
         println!("Automaton size: {:?}", automaton.get_size());
     }
@@ -120,22 +120,30 @@ fn main() {
         .expect("")
         .as_millis();
 
+    if clap_args.verbose {
+        println!("Removing epsilong transitions... ");
+    }
+    automaton = automaton.remove_epsilon_transitions();
+    if clap_args.verbose {
+        println!("Automaton size: {:?}", automaton.get_size());
+    }
+
     let final_dfa = match clap_args.action {
         Action::Run { .. } => {
-            clap_args.print_verbose("Determinizing automata...");
+            clap_args.print_verbose("Determinizing automata... ");
             let new_dfa = automaton.determinized();
             if clap_args.verbose {
                 println!("Intermediate Automaton Size: {:?}", new_dfa.get_size());
             }
-            clap_args.print_verbose("Minimizing automata...");
+            clap_args.print_verbose("Minimizing automata... ");
             new_dfa.minimized()
         }
         Action::Minimize { .. } => {
-            clap_args.print_verbose("Minimizing automata...");
+            clap_args.print_verbose("Minimizing automata... ");
             automaton.minimized()
         }
         Action::Determinize { .. } => {
-            clap_args.print_verbose("Determinizing automata...");
+            clap_args.print_verbose("Determinizing automata... ");
             automaton.determinized()
         }
     };
