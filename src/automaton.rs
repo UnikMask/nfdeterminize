@@ -39,6 +39,10 @@ impl Automaton {
         self.size = s;
     }
 
+    pub fn get_size(&self) -> usize {
+        return self.size;
+    }
+
     pub fn get_alphabet(&self) -> usize {
         return self.alphabet;
     }
