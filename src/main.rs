@@ -1,10 +1,14 @@
 mod automaton;
 mod automaton_encoder;
+mod automaton_test;
 mod transition_graphs;
 mod ubig;
 
 use std::{
-    fs,
+    fmt::Debug,
+    fs::{self, File},
+    io::Write,
+    path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -25,6 +29,10 @@ struct ProgramArguments {
     /// Time the minimization/determinization process
     #[clap(short, long)]
     timed: bool,
+
+    #[clap(short, long)]
+    /// File to print the automaton to
+    file: Option<PathBuf>,
 }
 
 impl ProgramArguments {
@@ -131,7 +139,19 @@ fn main() {
             automaton.determinized()
         }
     };
-    println!("{:?}", final_dfa);
+
+    // Print final dfa to file/stdout
+    if let Some(fp) = clap_args.file {
+        if let Ok(mut f) = File::create(fp.clone()) {
+            if let Err(_) = f.write_all(format!("{final_dfa:?}").as_bytes()) {
+                eprintln!("Writing to file failed!");
+            }
+        } else {
+            eprintln!("File {:?} already exists!", fp);
+        }
+    } else {
+        println!("{:?}", final_dfa);
+    }
 
     if clap_args.timed {
         let end = SystemTime::now()
