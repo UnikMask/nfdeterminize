@@ -172,10 +172,9 @@ impl Automaton {
         // Select start state from all start states in the non deterministic automata.
         let transition_arr = self.get_transition_array();
         let mut start_state = Ubig::new();
-        let mut cache: Vec<Option<Ubig>> = (0..self.size).map(|_| None).collect();
         (&self.start)
             .into_iter()
-            .for_each(|s| self.add_state(&transition_arr, &mut start_state, *s, &mut cache));
+            .for_each(|s| self.add_state(&transition_arr, &mut start_state, *s));
         for s in &self.end {
             if start_state.bit_at(s) {
                 accept_states.push(0);
@@ -195,7 +194,7 @@ impl Automaton {
                     let s_trs = &transition_arr[a][s];
 
                     s_trs.into_iter().for_each(|t| {
-                        self.add_state(&transition_arr, &mut new_s, *t, &mut cache);
+                        self.add_state(&transition_arr, &mut new_s, *t);
                     });
                 }
 
@@ -294,58 +293,33 @@ impl Automaton {
     ///////////////
 
     /// Add a state into a set of states, adding states connected via the empty char to the set with it.
-    fn add_state(
-        &self,
-        arr: &Vec<Vec<HashSet<usize>>>,
-        num: &mut Ubig,
-        bit: usize,
-        cache: &mut Vec<Option<Ubig>>,
-    ) {
-        //cache_option = None;
-        let mut extras = Ubig::new();
-        if let Some(cache_state) = &cache[bit] {
-            println!("Cache found for {bit:?}!");
-            extras = cache_state.clone();
-        } else {
-            let mut queue: VecDeque<usize> = VecDeque::from([bit]);
-            while let Some(b) = queue.pop_front() {
-                if !extras.bit_at(&b) {
-                    extras.set_to(&b, true);
+    fn add_state(&self, arr: &Vec<Vec<Vec<usize>>>, num: &mut Ubig, bit: usize) {
+        let mut queue: VecDeque<usize> = VecDeque::from([bit]);
+        while let Some(b) = queue.pop_front() {
+            if !num.bit_at(&b) {
+                num.set_to(&b, true);
 
-                    if let Some(cache_state) = &cache[b] {
-                        println!("Cached bit found - {b:?}");
-                        for c_b in cache_state.get_seq() {
-                            extras.set_to(&c_b, true);
-                        }
-                    } else {
-                        println!("Cache not found for {b:?}!");
-                        (&arr[0][b]).into_iter().for_each(|t| {
-                            queue.push_back(*t);
-                        });
-                    }
-                }
+                (&arr[0][b]).iter().for_each(|t| {
+                    queue.push_front(*t);
+                });
             }
-            cache[bit] = Some(extras.clone());
-        }
-        for b in extras.get_seq() {
-            num.set_to(&b, true);
         }
     }
 
     /// Get a hashmap of leading states from a given letter and original state.
-    fn get_transition_array(&self) -> Vec<Vec<HashSet<usize>>> {
+    fn get_transition_array(&self) -> Vec<Vec<Vec<usize>>> {
         //let mut map: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
-        let mut arr: Vec<Vec<HashSet<usize>>> = Vec::new();
+        let mut arr: Vec<Vec<Vec<usize>>> = Vec::new();
         for _ in 0..(self.alphabet + 1) {
-            let mut alphabet_arr: Vec<HashSet<usize>> = Vec::new();
+            let mut alphabet_arr: Vec<Vec<usize>> = Vec::new();
             for _ in 0..self.size + 1 {
-                alphabet_arr.push(HashSet::new());
+                alphabet_arr.push(Vec::new());
             }
             arr.push(alphabet_arr);
         }
 
         for transition in &self.table {
-            arr[transition.1][transition.0].insert(transition.2);
+            arr[transition.1][transition.0].push(transition.2);
         }
 
         return arr;
