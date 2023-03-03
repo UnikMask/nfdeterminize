@@ -1,7 +1,7 @@
-use fasthash::xx::Hasher64;
+use fasthash::xx::{self, Hasher64};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    hash::BuildHasherDefault,
+    hash::{BuildHasherDefault, Hasher},
     sync::{
         mpsc::{channel, Receiver, Sender},
         Arc, Mutex,
@@ -173,8 +173,7 @@ impl Automaton {
         let mut frontier_c: Vec<Arc<Mutex<VecDeque<Ubig>>>> = (0..N_THREADS)
             .map(|_| Arc::new(Mutex::new(VecDeque::new())))
             .collect();
-        let empty_chan: Vec<(Sender<(bool, i32)>, Receiver<(bool, i32)>)> =
-            (0..N_THREADS).map(|_| channel()).collect();
+        let (empty_tx, empty_rx): (Sender<(bool, usize)>, Receiver<(bool, usize)>) = channel();
 
         // Select start state from all start states in the non deterministic automata.
         let transition_arr = self.get_transition_array();
@@ -194,19 +193,30 @@ impl Automaton {
         // Multi-threaded code
         let mut handles = vec![];
         for i in 0..N_THREADS {
-            let (alphabet, start, end) = (self.alphabet, self.start.clone(), self.end.clone());
-            let local_arr = transition_arr.clone();
+            let (alphabet, end) = (self.alphabet, self.end.clone());
+            let transition_arr = transition_arr.clone();
+
+            // Mutex clones
+            let accept_states = Arc::clone(&accept_states);
+            let transitions = Arc::clone(&transitions);
             let num_mapper = Arc::clone(&num_mapper);
             let frontiers: Vec<Arc<Mutex<VecDeque<Ubig>>>> =
                 frontier_c.iter().map(|a| Arc::clone(a)).collect();
 
+            let empty_tx = empty_tx.clone();
+            let mut local_transitions: Vec<(usize, usize, usize)> = Vec::new();
+            let mut empty = false;
+
             handles.push(thread::spawn(move || loop {
                 if let Some(next) = frontiers[i].lock().unwrap().pop_front() {
+                    if empty {
+                        empty_tx.send((false, i));
+                    }
                     for a in 1..alphabet + 1 {
                         let mut new_s = Ubig::new();
                         for s in next.get_seq() {
-                            &local_arr[a][s].iter().for_each(|t| {
-                                Automaton::add_state(&transition_arr, &mut new_s, *t)
+                            &transition_arr[a][s].iter().for_each(|t| {
+                                Automaton::add_state(&transition_arr, &mut new_s, *t);
                             });
                         }
                         let mut num_mapper_l = num_mapper.lock().unwrap();
@@ -214,7 +224,7 @@ impl Automaton {
                         if !num_mapper_l.contains_key(&new_s) {
                             num_mapper_l.insert(new_s.clone(), num);
                         }
-                        transitions.lock().unwrap().push((
+                        local_transitions.push((
                             *num_mapper_l.get(&new_s).unwrap(),
                             a,
                             *num_mapper_l.get(&next).unwrap(),
@@ -224,8 +234,16 @@ impl Automaton {
                                 accept_states.lock().unwrap().push(num)
                             }
                         });
+                        let mut hasher = xx::Hasher64::default();
+                        hasher.write(&new_s.num);
+                        let hash = (hasher.finish() as usize) % N_THREADS;
+                        frontiers[hash].lock().unwrap().push_back(new_s);
                     }
+                } else if !empty {
+                    empty = true;
+                    empty_tx.send((true, i));
                 } else {
+                    transitions.lock().unwrap().append(&mut local_transitions);
                 }
             }));
         }
@@ -234,8 +252,12 @@ impl Automaton {
         }
 
         // Graph exploration - Depth-first search
-        while let Some(next) = frontier.pop_front() {}
-        return (transitions, num_mapper.len(), vec![0], accept_states);
+        return (
+            transitions.lock().unwrap().to_vec(),
+            num_mapper.lock().unwrap().len(),
+            vec![0],
+            accept_states.lock().unwrap().to_vec(),
+        );
     }
 
     /// Hopcroft algorithm for minimization of a DFA.
