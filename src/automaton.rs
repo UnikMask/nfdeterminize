@@ -3,6 +3,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     hash::{BuildHasherDefault, Hasher},
     sync::{
+        atomic::{AtomicBool, Ordering},
         mpsc::{channel, Receiver, Sender},
         Arc, Mutex,
     },
@@ -12,7 +13,7 @@ use std::{
 use crate::ubig::Ubig;
 type HashMapXX<K, V> = HashMap<K, V, BuildHasherDefault<Hasher64>>;
 
-static N_THREADS: usize = 12;
+static N_THREADS: usize = 6;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AutomatonType {
@@ -23,51 +24,15 @@ pub enum AutomatonType {
 // Structure for an automaton.
 #[derive(Debug, Eq, Clone, PartialEq)]
 pub struct Automaton {
-    automaton_type: AutomatonType,
-    size: usize,
-    alphabet: usize,
-    table: Vec<(usize, usize, usize)>,
-    start: Vec<usize>,
-    end: Vec<usize>,
+    pub automaton_type: AutomatonType,
+    pub size: usize,
+    pub alphabet: usize,
+    pub table: Vec<(usize, usize, usize)>,
+    pub start: Vec<usize>,
+    pub end: Vec<usize>,
 }
 
 impl Automaton {
-    ///////////////////////
-    // Getters & Setters //
-    ///////////////////////
-
-    pub fn set_automaton_type(&mut self, t: AutomatonType) {
-        self.automaton_type = t;
-    }
-
-    pub fn set_size(&mut self, s: usize) {
-        self.size = s;
-    }
-
-    pub fn get_size(&self) -> usize {
-        return self.size;
-    }
-
-    pub fn get_alphabet(&self) -> usize {
-        return self.alphabet;
-    }
-
-    pub fn set_alphabet(&mut self, a: usize) {
-        self.alphabet = a;
-    }
-
-    pub fn set_transitions(&mut self, t: Vec<(usize, usize, usize)>) {
-        self.table = t;
-    }
-
-    pub fn set_start_states(&mut self, ss: Vec<usize>) {
-        self.start = ss;
-    }
-
-    pub fn set_end_states(&mut self, es: Vec<usize>) {
-        self.end = es;
-    }
-
     ////////////////////
     // Public methods //
     ////////////////////
@@ -128,7 +93,7 @@ impl Automaton {
         let p = tuple.0;
         let len = tuple.1;
 
-        let mut ret = Automaton {
+        let ret = Automaton {
             automaton_type: AutomatonType::Det,
             size: len,
             alphabet: self.alphabet,
@@ -149,9 +114,6 @@ impl Automaton {
             start: Automaton::get_part_vec_from_vec(&p, &self.start),
             end: Automaton::get_part_vec_from_vec(&p, &self.end),
         };
-        ret.start.sort();
-        ret.end.sort();
-        ret.table.sort();
         return ret;
     }
 
@@ -191,95 +153,101 @@ impl Automaton {
 
         // Multi-threaded code
         thread::scope(|s| {
-            let (mut stop_txs, mut stop_recv): (
-                Vec<Sender<bool>>,
-                Vec<Arc<Mutex<Receiver<bool>>>>,
-            ) = (Vec::new(), Vec::new());
-            (0..N_THREADS).for_each(|_| {
-                let chan = channel();
-                stop_txs.push(chan.0);
-                stop_recv.push(Arc::new(Mutex::new(chan.1)));
-            });
+            let stop_sig: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
             for i in 0..N_THREADS {
                 // Copied automaton properties
-                let (alphabet, end) = (self.alphabet, self.end.clone());
                 let transition_arr = transition_arr.clone();
 
                 // Mutex clones
+                let end: HashSet<usize> = self.end.iter().map(|i| *i).collect();
                 let accept_states = Arc::clone(&accept_states);
                 let transitions = Arc::clone(&transitions);
-                let stop_recv = Arc::clone(&stop_recv[i]);
+                let stop_sig = Arc::clone(&stop_sig);
                 let num_mapper = Arc::clone(&num_mapper);
                 let frontiers: Vec<Arc<Mutex<VecDeque<Ubig>>>> =
                     frontier_c.iter().map(|a| Arc::clone(a)).collect();
 
                 let empty_tx = empty_tx.clone();
                 let mut local_transitions: Vec<(usize, usize, usize)> = Vec::new();
+                let mut local_accepts: Vec<usize> = Vec::new();
                 let mut empty = false;
 
                 s.spawn(move || loop {
-                    if let Some(next) = frontiers[i].lock().unwrap().pop_front() {
-                        println!("Thread {i:?} enters state loop!");
-                        if empty {
-                            println!("Thread {i:?} reported no longer empty!");
-                            empty_tx.send((false, i)).unwrap();
+                    let next: Option<Ubig>;
+                    let mut f = frontiers[i].lock().unwrap();
+                    next = f.pop_front();
+                    if let None = next {
+                        if !empty {
+                            empty = true;
+                            empty_tx.send((true, i)).unwrap();
+                            continue;
+                        } else if stop_sig.load(Ordering::Relaxed) {
+                            transitions.lock().unwrap().append(&mut local_transitions);
+                            accept_states.lock().unwrap().append(&mut local_accepts);
+                            break;
                         }
-                        for a in 1..alphabet + 1 {
+                    } else if let Some(next) = next {
+                        if empty {
+                            empty_tx.send((false, i)).unwrap();
+                            empty = false;
+                        }
+                        drop(f);
+                        for a in 1..&self.alphabet + 1 {
                             let mut new_s = Ubig::new();
                             for s in next.get_seq() {
                                 transition_arr[a][s].iter().for_each(|t| {
                                     Automaton::add_state(&transition_arr, &mut new_s, *t);
                                 });
                             }
+
+                            // Get shared num mapper HashMap and perform ops on shared memory.
+                            //println!("Thread {i:?} waits to access num mapper...");
                             let mut num_mapper_l = num_mapper.lock().unwrap();
+                            //println!("Thread {i:?} is using num mapper...");
                             let num = num_mapper_l.len();
-                            if !num_mapper_l.contains_key(&new_s) {
+                            let is_new = !num_mapper_l.contains_key(&new_s);
+                            if is_new {
                                 num_mapper_l.insert(new_s.clone(), num);
                             }
                             local_transitions.push((
-                                *num_mapper_l.get(&new_s).unwrap(),
-                                a,
                                 *num_mapper_l.get(&next).unwrap(),
+                                a,
+                                *num_mapper_l.get(&new_s).unwrap(),
                             ));
-                            end.iter().for_each(|s| {
-                                if new_s.bit_at(s) {
-                                    accept_states.lock().unwrap().push(num)
+                            drop(num_mapper_l);
+                            //println!("Thread {i:?} has dropped num mapper!");
+
+                            if is_new {
+                                let mut hasher = xx::Hasher64::default();
+                                hasher.write(&new_s.num);
+                                let hash = (hasher.finish() as usize) % N_THREADS;
+                                for s in new_s.get_seq().iter() {
+                                    if end.contains(s) {
+                                        local_accepts.push(num);
+                                        break;
+                                    }
                                 }
-                            });
-                            let mut hasher = xx::Hasher64::default();
-                            hasher.write(&new_s.num);
-                            let hash = (hasher.finish() as usize) % N_THREADS;
-                            println!("Thread {i:?}: Found state {new_s:?} - inserting into frontier {hash:?}...");
-                            frontiers[hash].lock().unwrap().push_back(new_s);
+                                //println!("Thread {i:?} tries to access frontier {hash:?}...");
+                                frontiers[hash].lock().unwrap().push_back(new_s);
+                                //println!("New state added to thread {hash:?} frontier");
+                            }
                         }
-                        println!("Thread {i:?} finishes q loop!");
-                    } else if !empty {
-                        empty = true;
-                        println!("Thread {i:?} reported empty!");
-                        empty_tx.send((true, i)).unwrap();
-                    } else if let Ok(_) = stop_recv.lock().unwrap().recv() {
-                        transitions.lock().unwrap().append(&mut local_transitions);
-                        break;
                     }
                 });
             }
             // Keep track
             let mut thread_status: Vec<bool> = (0..N_THREADS).map(|_| false).collect();
             let mut count: i64 = N_THREADS as i64;
-            let mut stop = false;
-            while !stop {
+            while !stop_sig.load(Ordering::Relaxed) {
                 if let Ok((empty, id)) = empty_rx.recv() {
                     if thread_status[id] != empty {
-                        count += if empty { 1 } else { -1 };
+                        count += if empty { -1 } else { 1 };
                         thread_status[id] = empty;
-                    }
-                    if count == 0 {
-                        println!("Kill signals sent!");
-                        stop_txs.clone().iter().for_each(|sig| {
-                            sig.send(true).unwrap();
-                        });
-                        stop = true;
+                        if count == 0 {
+                            //println!("Kill signal sent!");
+                            stop_sig.store(true, Ordering::Relaxed);
+                        }
                     }
                 }
             }

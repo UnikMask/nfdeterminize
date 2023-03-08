@@ -3,6 +3,13 @@ mod tests {
     use crate::automaton::Automaton;
     use crate::automaton::AutomatonType;
 
+    impl Automaton {
+        pub fn order_transitions(mut self) -> Self {
+            self.table.sort();
+            self
+        }
+    }
+
     #[test]
     // Test the behaviour of determinization over an NFA that is already deterministic.
     fn test_determinization_redundant() {
@@ -22,7 +29,7 @@ mod tests {
             vec![0],
             vec![0],
         );
-        assert_eq!(redundant_nd.determinized(), redundant_d);
+        assert_eq!(redundant_nd.determinized().order_transitions(), redundant_d);
     }
 
     #[test]
@@ -37,7 +44,10 @@ mod tests {
             vec![0],
             vec![0],
         );
-        assert_eq!(empty_lang_nd.determinized(), empty_lang_d);
+        assert_eq!(
+            empty_lang_nd.determinized().order_transitions(),
+            empty_lang_d
+        );
     }
 
     #[test]
@@ -59,7 +69,10 @@ mod tests {
             vec![0],
             vec![0],
         );
-        assert_eq!(unreachable_nd.determinized(), unreachable_d);
+        assert_eq!(
+            unreachable_nd.determinized().order_transitions(),
+            unreachable_d
+        );
     }
 
     #[test]
@@ -90,7 +103,7 @@ mod tests {
             vec![0],
             vec![3],
         );
-        assert_eq!(sinkhole_nd.determinized(), sinkhole_d);
+        assert_eq!(sinkhole_nd.determinized().order_transitions(), sinkhole_d);
     }
 
     #[test]
@@ -114,7 +127,7 @@ mod tests {
             vec![1],
         );
         assert_eq!(
-            duplicate_transitions_nd.determinized(),
+            duplicate_transitions_nd.determinized().order_transitions(),
             duplicate_transitions_d
         );
     }
@@ -138,7 +151,10 @@ mod tests {
             vec![0],
             vec![1],
         );
-        assert_eq!(set_of_states_nd.determinized(), set_of_states_d);
+        assert_eq!(
+            set_of_states_nd.determinized().order_transitions(),
+            set_of_states_d
+        );
     }
 
     #[test]
@@ -177,7 +193,10 @@ mod tests {
             vec![0],
             vec![1, 3],
         );
-        assert_eq!(empty_char_nd.determinized(), empty_char_d);
+        assert_eq!(
+            empty_char_nd.determinized().order_transitions(),
+            empty_char_d
+        );
     }
 
     #[test]
@@ -206,7 +225,10 @@ mod tests {
             vec![0],
             vec![1],
         );
-        assert_eq!(bipartite_big.minimized(), bipartite_small);
+        assert_eq!(
+            bipartite_big.minimized().order_transitions(),
+            bipartite_small
+        );
     }
 
     #[test]
@@ -250,13 +272,13 @@ mod tests {
             vec![2],
         );
 
-        assert_eq!(sep_big.minimized(), sep_small);
+        assert_eq!(sep_big.minimized().order_transitions(), sep_small);
     }
 
     #[test]
     // Test whether unminimizable machines cannot be minimized (the size doesn't decrease).
     fn test_minimization_unminimizable() {
-        let unmin_big = Automaton::new(
+        let unmin_small = Automaton::new(
             AutomatonType::Det,
             4,
             2,
@@ -272,9 +294,9 @@ mod tests {
             ],
             vec![0],
             vec![3],
-        );
-
-        let unmin_small = unmin_big.minimized();
-        assert_eq!(unmin_small.get_size(), 4);
+        )
+        .minimized()
+        .order_transitions();
+        assert_eq!(unmin_small.size, 4);
     }
 }

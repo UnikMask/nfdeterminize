@@ -112,7 +112,7 @@ fn main() {
 
     let automaton = clap_args.get_automaton();
     if clap_args.verbose {
-        println!("Automaton size: {:?}", automaton.get_size());
+        println!("Automaton size: {:?}", automaton.size);
     }
 
     let start = SystemTime::now()
@@ -125,7 +125,7 @@ fn main() {
             clap_args.print_verbose("Determinizing automata... ");
             let new_dfa = automaton.determinized();
             if clap_args.verbose {
-                println!("Intermediate Automaton Size: {:?}", new_dfa.get_size());
+                println!("Intermediate Automaton Size: {:?}", new_dfa.size);
             }
             clap_args.print_verbose("Minimizing automata... ");
             new_dfa.minimized()

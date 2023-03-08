@@ -26,23 +26,23 @@ impl From<&String> for Automaton {
 
                 // Get the pairs for all the properties of the automaton.
                 println!("Determining type...");
-                ret.set_automaton_type(match contents.next().unwrap().as_str() {
+                ret.automaton_type = match contents.next().unwrap().as_str() {
                     "det" => AutomatonType::Det,
                     "nondet" => AutomatonType::NonDet,
                     "epsilon" => AutomatonType::NonDet,
                     _ => panic!("Unreachable code!"),
-                });
+                };
 
                 // Set size and alphabet.
                 println!("Determining size and alphabet");
-                ret.set_size(str::parse(contents.next().unwrap().as_str()).unwrap());
+                ret.size = str::parse(contents.next().unwrap().as_str()).unwrap();
                 let alphabet_parse = contents.next().unwrap();
                 match alphabet_parse.as_rule() {
                     Rule::LETTER_STR => {
-                        ret.set_alphabet(alphabet_parse.as_str().len());
+                        ret.alphabet = alphabet_parse.as_str().len();
                     }
                     Rule::NUM => {
-                        ret.set_alphabet(str::parse(alphabet_parse.as_str()).unwrap());
+                        ret.alphabet = str::parse(alphabet_parse.as_str()).unwrap();
                     }
                     _ => {
                         panic!("Unreachable code!");
@@ -66,7 +66,7 @@ impl From<&String> for Automaton {
                             Some(letter) => match letter {
                                 '@' => {
                                     epsilon_increment = 0;
-                                    ret.set_alphabet(ret.get_alphabet() - 1);
+                                    ret.alphabet = ret.alphabet - 1;
                                     0
                                 }
                                 _ => i_a + epsilon_increment,
@@ -96,7 +96,7 @@ impl From<&String> for Automaton {
                         }
                     }
                 }
-                ret.set_transitions(tuple_table);
+                ret.table = tuple_table;
 
                 // Set start states.
                 println!("Getting start states...");
@@ -104,7 +104,7 @@ impl From<&String> for Automaton {
                 for num in contents.next().unwrap().into_inner() {
                     start.push(str::parse(num.as_str().trim()).unwrap());
                 }
-                ret.set_start_states(start);
+                ret.start = start;
 
                 // Set ends states.
                 println!("Creating end states...");
@@ -112,7 +112,7 @@ impl From<&String> for Automaton {
                 for num in contents.next().unwrap().into_inner() {
                     end.push(str::parse(num.as_str().trim()).unwrap());
                 }
-                ret.set_end_states(end);
+                ret.end = end;
                 ret
             }
             Err(error) => {
