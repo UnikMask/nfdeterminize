@@ -1,5 +1,5 @@
 mod automaton;
-mod automaton_encoder;
+pub mod automaton_encoder;
 mod automaton_test;
 mod transition_graphs;
 mod ubig;
