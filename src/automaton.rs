@@ -275,13 +275,13 @@ impl Automaton {
             finals.clone(),
         ]);
         let mut p_frontier: VecDeque<HashSet<usize>> = p.clone();
-        let rev_map = self.get_reverse_transition_map();
+        let rev_arr = self.get_reverse_transition_arr();
 
         // Iterate until the partition frontier is empty
         while let Some(set) = p_frontier.pop_front() {
             // Iterate over each input symbol
             for c in 1..self.alphabet + 1 {
-                let rs = Automaton::get_set_transitions(&rev_map, &set, c);
+                let rs = Automaton::get_set_transitions(&rev_arr, &set, c);
 
                 // Loop through all sets in P.
                 for _ in 0..p.len() {
@@ -343,37 +343,27 @@ impl Automaton {
         }
     }
 
+    fn get_empty_transition_arr(&self) -> Vec<Vec<Vec<usize>>> {
+        (0..self.alphabet + 1)
+            .map(|_| (0..self.size + 1).map(|_| Vec::new()).collect())
+            .collect()
+    }
+
     /// Get a hashmap of leading states from a given letter and original state.
     fn get_transition_array(&self) -> Vec<Vec<Vec<usize>>> {
-        //let mut map: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
-        let mut arr: Vec<Vec<Vec<usize>>> = Vec::new();
-        for _ in 0..(self.alphabet + 1) {
-            let mut alphabet_arr: Vec<Vec<usize>> = Vec::new();
-            for _ in 0..self.size + 1 {
-                alphabet_arr.push(Vec::new());
-            }
-            arr.push(alphabet_arr);
-        }
-
-        for transition in &self.table {
-            arr[transition.1][transition.0].push(transition.2);
-        }
-
+        let mut arr = self.get_empty_transition_arr();
+        (&self.table)
+            .into_iter()
+            .for_each(|t| arr[t.1][t.0].push(t.2));
         return arr;
     }
 
-    /// Get a map of all reverse transitions in the DFA.
-    fn get_reverse_transition_map(&self) -> HashMap<(usize, usize), Vec<usize>> {
-        let mut map: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
-        for transition in &self.table {
-            match map.get_mut(&(transition.2, transition.1)) {
-                Some(v) => v.push(transition.0),
-                None => {
-                    map.insert((transition.2, transition.1), vec![transition.0]);
-                }
-            }
-        }
-        return map;
+    fn get_reverse_transition_arr(&self) -> Vec<Vec<Vec<usize>>> {
+        let mut arr = self.get_empty_transition_arr();
+        (&self.table)
+            .into_iter()
+            .for_each(|t| arr[t.1][t.2].push(t.0));
+        return arr;
     }
 
     ////////////////////
@@ -384,10 +374,7 @@ impl Automaton {
     fn get_part_vec_from_vec(p: &HashMap<usize, usize>, s: &Vec<usize>) -> Vec<usize> {
         s.clone()
             .into_iter()
-            .map(|s| match p.get(&s) {
-                Some(t) => *t,
-                None => panic!(),
-            })
+            .map(|s| *p.get(&s).unwrap())
             .collect::<HashSet<usize>>()
             .into_iter()
             .collect::<Vec<usize>>()
@@ -396,17 +383,15 @@ impl Automaton {
     /// Get a list of states that are destinations of given set of states and character from
     /// a transition/reverse transition map.
     fn get_set_transitions(
-        map: &HashMap<(usize, usize), Vec<usize>>,
+        arr: &Vec<Vec<Vec<usize>>>,
         set: &HashSet<usize>,
         c: usize,
     ) -> HashSet<usize> {
         let mut ret: HashSet<usize> = HashSet::new();
-        set.into_iter().for_each(|s| {
-            if let Some(arr) = map.get(&(*s, c)) {
-                arr.into_iter().for_each(|v| {
-                    ret.insert(*v);
-                });
-            }
+        set.iter().for_each(|s| {
+            (&arr[c][*s]).into_iter().for_each(|f| {
+                ret.insert(*f);
+            });
         });
         ret
     }
@@ -423,14 +408,14 @@ impl Automaton {
                 None => break,
             };
             if *replaced == next {
-                for replacement in replacements {
-                    p.push_back(replacement.clone());
-                }
+                replacements
+                    .into_iter()
+                    .for_each(|r| p.push_back(r.clone()));
                 return true;
             } else {
                 p.push_back(next);
             }
         }
-        return false;
+        false
     }
 }
