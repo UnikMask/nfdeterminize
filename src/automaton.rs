@@ -202,9 +202,7 @@ impl Automaton {
                             }
 
                             // Get shared num mapper HashMap and perform ops on shared memory.
-                            //println!("Thread {i:?} waits to access num mapper...");
                             let mut num_mapper_l = num_mapper.lock().unwrap();
-                            //println!("Thread {i:?} is using num mapper...");
                             let num = num_mapper_l.len();
                             let is_new = !num_mapper_l.contains_key(&new_s);
                             if is_new {
@@ -216,7 +214,6 @@ impl Automaton {
                                 *num_mapper_l.get(&new_s).unwrap(),
                             ));
                             drop(num_mapper_l);
-                            //println!("Thread {i:?} has dropped num mapper!");
 
                             if is_new {
                                 let mut hasher = xx::Hasher64::default();
@@ -228,9 +225,7 @@ impl Automaton {
                                         break;
                                     }
                                 }
-                                //println!("Thread {i:?} tries to access frontier {hash:?}...");
                                 frontiers[hash].lock().unwrap().push_back(new_s);
-                                //println!("New state added to thread {hash:?} frontier");
                             }
                         }
                     }
@@ -285,10 +280,7 @@ impl Automaton {
 
                 // Loop through all sets in P.
                 for _ in 0..p.len() {
-                    let r = match p.pop_front() {
-                        Some(set) => set,
-                        None => break,
-                    };
+                    let r = p.pop_front().unwrap();
 
                     if r.intersection(&rs).next() != None && r.difference(&rs).next() != None {
                         // Get sets of intersections and differences
