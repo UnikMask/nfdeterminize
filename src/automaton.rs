@@ -161,13 +161,7 @@ impl Automaton {
         let mut transitions: Vec<(usize, usize, usize)> = Vec::new(); // All DFA transitions
         let mut accept_states: Vec<usize> = Vec::new(); // All accept states
         let mut num_mapper: HashMapXX<Ubig, usize> = HashMapXX::default();
-        let mut bookmark = 0;
         let mut frontier: VecDeque<Ubig> = VecDeque::new();
-
-        //let mut frontier_c: Vec<VecDeque<Ubig>> = Vec::with_capacity(N_THREADS + 1);
-        //for i in 0..N_THREADS + 1 {
-        //    frontier_c[i] = VecDeque::new();
-        //}
 
         // Select start state from all start states in the non deterministic automata.
         let transition_arr = self.get_transition_array();
@@ -181,46 +175,35 @@ impl Automaton {
                 break;
             }
         }
-        num_mapper.insert(start_state.clone(), bookmark);
+        num_mapper.insert(start_state.clone(), num_mapper.len());
         frontier.push_back(start_state.clone());
-        bookmark += 1;
 
         // Graph exploration - Depth-first search
         while let Some(next) = frontier.pop_front() {
-            // Explore all new states for each alphabet letter.
-            for a in 1..self.alphabet + 1 {
+            (1..self.alphabet + 1).for_each(|a| {
                 let mut new_s = Ubig::new();
-                for s in next.get_seq() {
-                    let s_trs = &transition_arr[a][s];
-
-                    s_trs.into_iter().for_each(|t| {
+                next.get_seq().into_iter().for_each(|s| {
+                    (&transition_arr[a][s]).into_iter().for_each(|t| {
                         self.add_state(&transition_arr, &mut new_s, *t);
-                    });
-                }
+                    })
+                });
 
                 if !num_mapper.contains_key(&new_s) {
-                    let num = bookmark;
-                    num_mapper.insert(new_s.clone(), num);
-
-                    bookmark += 1;
+                    num_mapper.insert(new_s.clone(), num_mapper.len());
                     for s in &self.end {
                         if new_s.bit_at(s) {
-                            accept_states.push(num);
+                            accept_states.push(num_mapper.len() - 1);
                             break;
                         }
                     }
                     frontier.push_back(new_s.clone());
                 }
-                let num = match num_mapper.get(&new_s) {
-                    Some(n) => n,
-                    None => panic!("New state was not successfully added to mapper!"),
-                };
-                let s_n = match num_mapper.get(&next) {
-                    Some(s) => s,
-                    None => panic!("State in queue was not succesfully added to mapper!"),
-                };
-                transitions.push((*s_n, a, *num));
-            }
+                transitions.push((
+                    *num_mapper.get(&next).unwrap(),
+                    a,
+                    *num_mapper.get(&new_s).unwrap(),
+                ));
+            });
         }
         return (transitions, num_mapper.len(), vec![0], accept_states);
     }
