@@ -221,37 +221,30 @@ impl Automaton {
         ]);
 
         let mut q = p.clone();
-
         let rev_arr = self.get_reverse_transition_arr();
-
         while let Some(set) = q.pop_front() {
             for c in 1..self.alphabet + 1 {
                 let rs = Automaton::get_set_from_transitions(&rev_arr, &set, c);
-                let mut changes: Vec<(usize, Vec<usize>, (Vec<usize>, Vec<usize>))> = Vec::new();
-                (&p).into_iter().enumerate().for_each(|(i, v)| {
+                let len = p.len();
+                let mut cursor = p.cursor_front_mut();
+                let mut index = 0;
+                while index < len {
+                    let v = cursor.current().unwrap().clone();
                     let (diffs, ands) = Automaton::get_diff_ands(&v, &rs);
                     if diffs.len() > 0 && ands.len() > 0 {
-                        changes.push((i, v.clone(), (diffs, ands)));
-                    }
-                });
-                let mut index = 0;
-                let mut cursor = p.cursor_front_mut();
+                        cursor.insert_before(diffs.clone());
+                        cursor.insert_before(ands.clone());
+                        cursor.remove_current();
+                        cursor.move_prev();
 
-                changes.into_iter().for_each(|(i, v, (diffs, ands))| {
-                    while index < i {
-                        cursor.move_next();
-                        index += 1;
+                        let mut ll = LinkedList::new();
+                        ll.push_front(diffs);
+                        ll.push_front(ands);
+                        Automaton::replace_in_queue(&mut q, &v, ll);
                     }
-                    cursor.insert_before(diffs.clone());
-                    cursor.insert_before(ands.clone());
-                    cursor.remove_current();
-                    cursor.move_prev();
-
-                    let mut ll = LinkedList::new();
-                    ll.push_front(diffs);
-                    ll.push_front(ands);
-                    Automaton::replace_in_queue(&mut q, &v, ll);
-                });
+                    index += 1;
+                    cursor.move_next();
+                }
             }
         }
 
@@ -346,22 +339,17 @@ impl Automaton {
         replace: &Vec<usize>,
         mut replacement: LinkedList<Vec<usize>>,
     ) {
-        let mut index = 0;
-        let mut iter = q.iter();
-        while let Some(next) = iter.next() {
+        let mut cursor = q.cursor_front_mut();
+        while let Some(next) = cursor.current() {
             if Automaton::all_equal(replace, next) {
-                break;
+                replacement.iter().for_each(|r| {
+                    cursor.insert_before(r.to_vec());
+                });
+                return;
             }
-            index += 1;
+            cursor.move_next();
         }
-        if index < q.len() {
-            let mut rest = q.split_off(index);
-            rest.pop_front();
-            q.append(&mut replacement);
-            q.append(&mut rest);
-        } else {
-            q.append(&mut replacement);
-        }
+        q.append(&mut replacement);
     }
 
     fn all_equal(u: &Vec<usize>, v: &Vec<usize>) -> bool {
