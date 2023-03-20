@@ -1,7 +1,8 @@
 use fasthash::xx::Hasher64;
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    hash::BuildHasherDefault,
+    cmp::{min, Reverse},
+    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
+    hash::{BuildHasherDefault, Hasher},
 };
 
 use crate::ubig::Ubig;
@@ -212,20 +213,43 @@ impl Automaton {
     /// Returns a map of what state is in which leading partition, and the number of partitions.
     fn hopcroft_algo(&self) -> (HashMap<usize, usize>, usize) {
         let finals: HashSet<usize> = self.end.clone().into_iter().collect();
-
-        // Get sets of all non-finals and finals.
         let mut p: VecDeque<HashSet<usize>> = VecDeque::from_iter(vec![
             (0..self.size)
                 .filter(|i| !finals.contains(i))
                 .collect::<HashSet<usize>>(),
             finals.clone(),
         ]);
-        let mut p_frontier: VecDeque<HashSet<usize>> = p.clone();
+        let mut pn: HashSet<Vec<usize>> = HashSet::from_iter(vec![
+            (0..self.size)
+                .filter(|i| !finals.contains(i))
+                .collect::<Vec<usize>>(),
+            self.end.clone(),
+        ]);
+        let mut qn = pn.clone().into_iter().collect::<VecDeque<Vec<usize>>>();
+
+        let mut q: VecDeque<HashSet<usize>> = p.clone();
         let rev_arr = self.get_reverse_transition_arr();
 
+        while let Some(set) = qn.pop_front() {
+            for c in 1..self.alphabet + 1 {
+                let rs = Automaton::get_set_from_transitions(&rev_arr, &set, c);
+                let mut changes: HashMap<Vec<usize>, (Vec<usize>, Vec<usize>)> = HashMap::new();
+                for v in pn.into_iter() {
+                    let mut diffs = VecDeque::new();
+                    let mut ands = VecDeque::new();
+                    for i in 0..min(v.len(), rs.len()) {
+                        if v[i] != rs[i] {
+                            diffs.push_back(v[i]);
+                        } else {
+                            ands.push_back(v[i]);
+                        }
+                    }
+                }
+            }
+        }
+
         // Iterate until the partition frontier is empty
-        while let Some(set) = p_frontier.pop_front() {
-            // Iterate over each input symbol
+        while let Some(set) = q.pop_front() {
             for c in 1..self.alphabet + 1 {
                 let rs = Automaton::get_set_transitions(&rev_arr, &set, c);
 
@@ -246,12 +270,12 @@ impl Automaton {
                         p.push_back(r0.clone());
 
                         // Replace r with r0 and r1 if r is in frontier
-                        if !Automaton::replace_in_partition(&mut p_frontier, &r, replacements) {
+                        if !Automaton::replace_in_partition(&mut q, &r, replacements) {
                             // Add to frontier whichever of r0 or r1 is the smallest
                             if r0.len() <= r1.len() {
-                                p_frontier.push_back(r0);
+                                q.push_back(r0);
                             } else {
-                                p_frontier.push_back(r1);
+                                q.push_back(r1);
                             }
                         }
                     } else {
@@ -340,6 +364,22 @@ impl Automaton {
             });
         });
         ret
+    }
+
+    fn get_set_from_transitions(
+        arr: &Vec<Vec<Vec<usize>>>,
+        set: &Vec<usize>,
+        c: usize,
+    ) -> Vec<usize> {
+        let mut bh: BinaryHeap<Reverse<usize>> = BinaryHeap::new();
+        set.into_iter().for_each(|s| {
+            (&arr[c][*s]).into_iter().for_each(|f| bh.push(Reverse(*f)));
+        });
+        let mut v = Vec::with_capacity(bh.len());
+        while let Some(i) = bh.pop() {
+            v.push(i.0);
+        }
+        return v;
     }
 
     /// Replace a set with other sets from a set of sets (a partition).
