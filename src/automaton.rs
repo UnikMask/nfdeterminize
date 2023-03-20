@@ -7,6 +7,7 @@ use std::{
 
 use crate::ubig::Ubig;
 type HashMapXX<K, V> = HashMap<K, V, BuildHasherDefault<Hasher64>>;
+type HashSetXX<T> = HashSet<T, BuildHasherDefault<Hasher64>>;
 
 // static N_THREADS: usize = 12;
 
@@ -213,7 +214,7 @@ impl Automaton {
     /// Returns a map of what state is in which leading partition, and the number of partitions.
     fn hopcroft_algo(&self) -> (HashMap<usize, usize>, usize) {
         let finals: HashSet<usize> = self.end.clone().into_iter().collect();
-        let mut p: HashSet<Vec<usize>> = HashSet::from_iter(vec![
+        let mut p: HashSetXX<Vec<usize>> = HashSetXX::from_iter(vec![
             (0..self.size)
                 .filter(|i| !finals.contains(i))
                 .collect::<Vec<usize>>(),
@@ -226,26 +227,23 @@ impl Automaton {
         while let Some(set) = q.pop_front() {
             for c in 1..self.alphabet + 1 {
                 let rs = Automaton::get_set_from_transitions(&rev_arr, &set, c);
-                let mut change_map: HashMap<Vec<usize>, (Vec<usize>, Vec<usize>)> = HashMap::new();
+                let mut change_map: HashMapXX<Vec<usize>, (Vec<usize>, Vec<usize>)> =
+                    HashMapXX::default();
                 (&p).into_iter().for_each(|v| {
                     let (diffs, ands) = Automaton::get_diff_ands(&v, &rs);
                     if diffs.len() > 0 && ands.len() > 0 {
-                        change_map.insert(v.clone(), (diffs.clone(), ands.clone()));
+                        change_map.insert(v.clone(), (diffs, ands));
                     }
                 });
-                let mut past_changes = HashSet::new();
                 change_map.drain().for_each(|(v, (diffs, ands))| {
-                    if !past_changes.contains(&v) {
-                        past_changes.insert(v.clone());
-                        p.remove(&v);
-                        p.insert(diffs.clone());
-                        p.insert(ands.clone());
+                    p.remove(&v);
+                    p.insert(diffs.clone());
+                    p.insert(ands.clone());
 
-                        let mut ll = LinkedList::new();
-                        ll.push_front(diffs);
-                        ll.push_front(ands);
-                        Automaton::replace_in_queue(&mut q, &v, ll);
-                    }
+                    let mut ll = LinkedList::new();
+                    ll.push_front(diffs);
+                    ll.push_front(ands);
+                    Automaton::replace_in_queue(&mut q, &v, ll);
                 });
             }
         }
