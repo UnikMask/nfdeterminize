@@ -1,8 +1,8 @@
 use fasthash::xx::Hasher64;
 use std::{
-    cmp::{min, Reverse},
-    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
-    hash::{BuildHasherDefault, Hasher},
+    cmp::Reverse,
+    collections::{BinaryHeap, HashMap, HashSet, LinkedList, VecDeque},
+    hash::BuildHasherDefault,
 };
 
 use crate::ubig::Ubig;
@@ -213,85 +213,52 @@ impl Automaton {
     /// Returns a map of what state is in which leading partition, and the number of partitions.
     fn hopcroft_algo(&self) -> (HashMap<usize, usize>, usize) {
         let finals: HashSet<usize> = self.end.clone().into_iter().collect();
-        let mut p: VecDeque<HashSet<usize>> = VecDeque::from_iter(vec![
-            (0..self.size)
-                .filter(|i| !finals.contains(i))
-                .collect::<HashSet<usize>>(),
-            finals.clone(),
-        ]);
-        let mut pn: HashSet<Vec<usize>> = HashSet::from_iter(vec![
+        let mut p: HashSet<Vec<usize>> = HashSet::from_iter(vec![
             (0..self.size)
                 .filter(|i| !finals.contains(i))
                 .collect::<Vec<usize>>(),
             self.end.clone(),
         ]);
-        let mut qn = pn.clone().into_iter().collect::<VecDeque<Vec<usize>>>();
+        let mut q = p.clone().into_iter().collect::<LinkedList<Vec<usize>>>();
 
-        let mut q: VecDeque<HashSet<usize>> = p.clone();
         let rev_arr = self.get_reverse_transition_arr();
 
-        while let Some(set) = qn.pop_front() {
-            for c in 1..self.alphabet + 1 {
-                let rs = Automaton::get_set_from_transitions(&rev_arr, &set, c);
-                let mut changes: HashMap<Vec<usize>, (Vec<usize>, Vec<usize>)> = HashMap::new();
-                for v in pn.into_iter() {
-                    let mut diffs = VecDeque::new();
-                    let mut ands = VecDeque::new();
-                    for i in 0..min(v.len(), rs.len()) {
-                        if v[i] != rs[i] {
-                            diffs.push_back(v[i]);
-                        } else {
-                            ands.push_back(v[i]);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Iterate until the partition frontier is empty
         while let Some(set) = q.pop_front() {
             for c in 1..self.alphabet + 1 {
-                let rs = Automaton::get_set_transitions(&rev_arr, &set, c);
-
-                // Loop through all sets in P.
-                for _ in 0..p.len() {
-                    let r = match p.pop_front() {
-                        Some(set) => set,
-                        None => break,
-                    };
-
-                    if r.intersection(&rs).next() != None && r.difference(&rs).next() != None {
-                        // Get sets of intersections and differences
-                        let r0 = r.intersection(&rs).cloned().collect::<HashSet<usize>>();
-                        let r1 = r.difference(&rs).cloned().collect::<HashSet<usize>>();
-                        let replacements = vec![r1.clone(), r0.clone()];
-
-                        p.push_back(r1.clone());
-                        p.push_back(r0.clone());
-
-                        // Replace r with r0 and r1 if r is in frontier
-                        if !Automaton::replace_in_partition(&mut q, &r, replacements) {
-                            // Add to frontier whichever of r0 or r1 is the smallest
-                            if r0.len() <= r1.len() {
-                                q.push_back(r0);
-                            } else {
-                                q.push_back(r1);
-                            }
-                        }
-                    } else {
-                        p.push_back(r);
+                let rs = Automaton::get_set_from_transitions(&rev_arr, &set, c);
+                let mut change_map: HashMap<Vec<usize>, (Vec<usize>, Vec<usize>)> = HashMap::new();
+                (&p).into_iter().for_each(|v| {
+                    let (diffs, ands) = Automaton::get_diff_ands(&v, &rs);
+                    if diffs.len() > 0 && ands.len() > 0 {
+                        change_map.insert(v.clone(), (diffs.clone(), ands.clone()));
                     }
-                }
+                });
+                let mut past_changes = HashSet::new();
+                change_map.drain().for_each(|(v, (diffs, ands))| {
+                    if !past_changes.contains(&v) {
+                        past_changes.insert(v.clone());
+                        p.remove(&v);
+                        p.insert(diffs.clone());
+                        p.insert(ands.clone());
+
+                        let mut ll = LinkedList::new();
+                        ll.push_front(diffs);
+                        ll.push_front(ands);
+                        Automaton::replace_in_queue(&mut q, &v, ll);
+                    }
+                });
             }
         }
 
         // Convert partition into map from initial state to partitioned state
         let mut ret_map: HashMap<usize, usize> = HashMap::new();
-        for i in 0..p.len() {
-            for s in p[i].iter() {
-                ret_map.insert(*s, i);
-            }
-        }
+        let mut index = 0;
+        p.iter().for_each(|next| {
+            next.iter().for_each(|s| {
+                ret_map.insert(*s, index);
+            });
+            index += 1;
+        });
         return (ret_map, p.len());
     }
 
@@ -313,6 +280,7 @@ impl Automaton {
         }
     }
 
+    /// Generates and empty transition array with the dimensions of self.
     fn get_empty_transition_arr(&self) -> Vec<Vec<Vec<usize>>> {
         (0..self.alphabet + 1)
             .map(|_| (0..self.size + 1).map(|_| Vec::new()).collect())
@@ -352,20 +320,6 @@ impl Automaton {
 
     /// Get a list of states that are destinations of given set of states and character from
     /// a transition/reverse transition map.
-    fn get_set_transitions(
-        arr: &Vec<Vec<Vec<usize>>>,
-        set: &HashSet<usize>,
-        c: usize,
-    ) -> HashSet<usize> {
-        let mut ret: HashSet<usize> = HashSet::new();
-        set.iter().for_each(|s| {
-            (&arr[c][*s]).into_iter().for_each(|f| {
-                ret.insert(*f);
-            });
-        });
-        ret
-    }
-
     fn get_set_from_transitions(
         arr: &Vec<Vec<Vec<usize>>>,
         set: &Vec<usize>,
@@ -382,26 +336,64 @@ impl Automaton {
         return v;
     }
 
-    /// Replace a set with other sets from a set of sets (a partition).
-    fn replace_in_partition(
-        p: &mut VecDeque<HashSet<usize>>,
-        replaced: &HashSet<usize>,
-        replacements: Vec<HashSet<usize>>,
-    ) -> bool {
-        for _ in 0..p.len() {
-            let next = match p.pop_front() {
-                Some(next) => next,
-                None => break,
-            };
-            if *replaced == next {
-                replacements
-                    .into_iter()
-                    .for_each(|r| p.push_back(r.clone()));
-                return true;
+    fn replace_in_queue(
+        q: &mut LinkedList<Vec<usize>>,
+        replace: &Vec<usize>,
+        mut replacement: LinkedList<Vec<usize>>,
+    ) {
+        let mut index = 0;
+        let mut iter = q.iter();
+        while let Some(next) = iter.next() {
+            if Automaton::all_equal(replace, next) {
+                break;
+            }
+            index += 1;
+        }
+        if index < q.len() {
+            let mut rest = q.split_off(index);
+            rest.pop_front();
+            q.append(&mut replacement);
+            q.append(&mut rest);
+        } else {
+            q.append(&mut replacement);
+        }
+    }
+
+    fn all_equal(u: &Vec<usize>, v: &Vec<usize>) -> bool {
+        if u.len() != v.len() {
+            false
+        } else {
+            let mut cursor = 0;
+            while cursor < u.len() {
+                if u[cursor] != v[cursor] {
+                    return false;
+                }
+                cursor += 1;
+            }
+            true
+        }
+    }
+
+    /// For 2 ordered sets U and V, get U n V and U \ V.
+    fn get_diff_ands(u: &Vec<usize>, v: &Vec<usize>) -> (Vec<usize>, Vec<usize>) {
+        let (mut cursor_u, mut cursor_v) = (0, 0);
+        let (mut diffs, mut ands) = (Vec::new(), Vec::new());
+        while cursor_u < u.len() && cursor_v < v.len() {
+            if u[cursor_u] < v[cursor_v] {
+                diffs.push(u[cursor_u]);
+                cursor_u += 1;
+            } else if u[cursor_u] > v[cursor_v] {
+                cursor_v += 1;
             } else {
-                p.push_back(next);
+                ands.push(u[cursor_u]);
+                cursor_v += 1;
+                cursor_u += 1;
             }
         }
-        false
+        if cursor_u < u.len() {
+            u[cursor_u..u.len()].iter().for_each(|i| diffs.push(*i));
+        }
+
+        (diffs, ands)
     }
 }
