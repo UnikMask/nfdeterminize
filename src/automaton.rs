@@ -7,7 +7,6 @@ use std::{
 
 use crate::ubig::Ubig;
 type HashMapXX<K, V> = HashMap<K, V, BuildHasherDefault<Hasher64>>;
-type HashSetXX<T> = HashSet<T, BuildHasherDefault<Hasher64>>;
 
 // static N_THREADS: usize = 12;
 
@@ -214,31 +213,39 @@ impl Automaton {
     /// Returns a map of what state is in which leading partition, and the number of partitions.
     fn hopcroft_algo(&self) -> (HashMap<usize, usize>, usize) {
         let finals: HashSet<usize> = self.end.clone().into_iter().collect();
-        let mut p: HashSetXX<Vec<usize>> = HashSetXX::from_iter(vec![
+        let mut p: LinkedList<Vec<usize>> = LinkedList::from_iter(vec![
             (0..self.size)
                 .filter(|i| !finals.contains(i))
                 .collect::<Vec<usize>>(),
             self.end.clone(),
         ]);
-        let mut q = p.clone().into_iter().collect::<LinkedList<Vec<usize>>>();
+
+        let mut q = p.clone();
 
         let rev_arr = self.get_reverse_transition_arr();
 
         while let Some(set) = q.pop_front() {
             for c in 1..self.alphabet + 1 {
                 let rs = Automaton::get_set_from_transitions(&rev_arr, &set, c);
-                let mut change_map: HashMapXX<Vec<usize>, (Vec<usize>, Vec<usize>)> =
-                    HashMapXX::default();
-                (&p).into_iter().for_each(|v| {
+                let mut changes: Vec<(usize, Vec<usize>, (Vec<usize>, Vec<usize>))> = Vec::new();
+                (&p).into_iter().enumerate().for_each(|(i, v)| {
                     let (diffs, ands) = Automaton::get_diff_ands(&v, &rs);
                     if diffs.len() > 0 && ands.len() > 0 {
-                        change_map.insert(v.clone(), (diffs, ands));
+                        changes.push((i, v.clone(), (diffs, ands)));
                     }
                 });
-                change_map.drain().for_each(|(v, (diffs, ands))| {
-                    p.remove(&v);
-                    p.insert(diffs.clone());
-                    p.insert(ands.clone());
+                let mut index = 0;
+                let mut cursor = p.cursor_front_mut();
+
+                changes.into_iter().for_each(|(i, v, (diffs, ands))| {
+                    while index < i {
+                        cursor.move_next();
+                        index += 1;
+                    }
+                    cursor.insert_before(diffs.clone());
+                    cursor.insert_before(ands.clone());
+                    cursor.remove_current();
+                    cursor.move_prev();
 
                     let mut ll = LinkedList::new();
                     ll.push_front(diffs);
