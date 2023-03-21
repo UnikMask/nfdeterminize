@@ -2,7 +2,7 @@ use fasthash::xx::Hasher64;
 use std::{
     cmp::Ordering,
     cmp::Reverse,
-    collections::{BinaryHeap, HashMap, HashSet, LinkedList, VecDeque},
+    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
     hash::BuildHasherDefault,
 };
 
@@ -214,7 +214,7 @@ impl Automaton {
     /// Returns a map of what state is in which leading partition, and the number of partitions.
     fn hopcroft_algo(&self) -> (HashMap<usize, usize>, usize) {
         let finals: HashSet<usize> = self.end.clone().into_iter().collect();
-        let mut p: LinkedList<Vec<usize>> = LinkedList::from_iter(vec![
+        let mut p: VecDeque<Vec<usize>> = VecDeque::from_iter(vec![
             (0..self.size)
                 .filter(|i| !finals.contains(i))
                 .collect::<Vec<usize>>(),
@@ -226,26 +226,23 @@ impl Automaton {
         while let Some(set) = q.pop_front() {
             for c in 1..self.alphabet + 1 {
                 let rs = Automaton::get_set_from_transitions(&rev_arr, &set, c);
-                let len = p.len();
-                let mut cursor = p.cursor_front_mut();
-                let mut index = 0;
-                while index < len {
-                    let v = cursor.current().unwrap().clone();
+                let mut changes = VecDeque::new();
+                p.iter().enumerate().for_each(|(i, v)| {
                     let (diffs, ands) = Automaton::get_diff_ands(&v, &rs);
                     if diffs.len() > 0 && ands.len() > 0 {
-                        cursor.insert_before(diffs.clone());
-                        cursor.insert_before(ands.clone());
-                        cursor.remove_current();
-                        cursor.move_prev();
-
-                        let mut ll = LinkedList::new();
-                        ll.push_front(diffs);
-                        ll.push_front(ands);
-                        Automaton::replace_in_queue(&mut q, &v, ll);
+                        changes.push_back((i, (diffs, ands)));
                     }
-                    index += 1;
-                    cursor.move_next();
-                }
+                });
+                changes.drain(..).for_each(|(i, (diffs, ands))| {
+                    *p.get_mut(i).unwrap() = diffs.clone();
+                    p.push_back(ands.clone());
+
+                    Automaton::replace_in_queue(
+                        &mut q,
+                        p.get(i).unwrap(),
+                        VecDeque::from(vec![diffs, ands]),
+                    );
+                });
             }
         }
 
@@ -336,33 +333,38 @@ impl Automaton {
     }
 
     fn replace_in_queue(
-        q: &mut LinkedList<Vec<usize>>,
+        q: &mut VecDeque<Vec<usize>>,
         replace: &Vec<usize>,
-        replacement: LinkedList<Vec<usize>>,
+        mut replacement: VecDeque<Vec<usize>>,
     ) {
-        let mut cursor = q.cursor_front_mut();
-        while let Some(next) = cursor.current() {
-            if Automaton::all_equal(replace, next) {
-                replacement.iter().for_each(|r| {
-                    cursor.insert_before(r.to_vec());
-                });
-                return;
+        let mut found = false;
+        let mut iter = q.iter_mut();
+        while let Some(next) = iter.next() {
+            if Automaton::all_equal(replace, &next) {
+                found = true;
+                *next = replacement.pop_front().unwrap();
+                break;
             }
-            cursor.move_next();
         }
-        q.push_back(
-            replacement
-                .iter()
-                .min_by(|x, y| {
-                    if x.len() < y.len() {
-                        Ordering::Less
-                    } else {
-                        Ordering::Greater
-                    }
-                })
-                .unwrap()
-                .clone(),
-        );
+        if found {
+            replacement.drain(..).for_each(|r| {
+                q.push_back(r);
+            });
+        } else {
+            q.push_back(
+                replacement
+                    .iter()
+                    .min_by(|x, y| {
+                        if x.len() < y.len() {
+                            Ordering::Less
+                        } else {
+                            Ordering::Greater
+                        }
+                    })
+                    .unwrap()
+                    .clone(),
+            );
+        }
     }
 
     fn all_equal(u: &Vec<usize>, v: &Vec<usize>) -> bool {
