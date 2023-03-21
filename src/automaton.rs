@@ -1,5 +1,6 @@
 use fasthash::xx::Hasher64;
 use std::{
+    cmp::Ordering,
     cmp::Reverse,
     collections::{BinaryHeap, HashMap, HashSet, LinkedList, VecDeque},
     hash::BuildHasherDefault,
@@ -337,7 +338,7 @@ impl Automaton {
     fn replace_in_queue(
         q: &mut LinkedList<Vec<usize>>,
         replace: &Vec<usize>,
-        mut replacement: LinkedList<Vec<usize>>,
+        replacement: LinkedList<Vec<usize>>,
     ) {
         let mut cursor = q.cursor_front_mut();
         while let Some(next) = cursor.current() {
@@ -349,7 +350,19 @@ impl Automaton {
             }
             cursor.move_next();
         }
-        q.append(&mut replacement);
+        q.push_back(
+            replacement
+                .iter()
+                .min_by(|x, y| {
+                    if x.len() < y.len() {
+                        Ordering::Less
+                    } else {
+                        Ordering::Greater
+                    }
+                })
+                .unwrap()
+                .clone(),
+        );
     }
 
     fn all_equal(u: &Vec<usize>, v: &Vec<usize>) -> bool {
