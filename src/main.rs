@@ -1,4 +1,3 @@
-#![feature(linked_list_cursors)]
 mod automaton;
 pub mod automaton_encoder;
 mod automaton_test;
