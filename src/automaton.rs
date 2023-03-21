@@ -214,20 +214,28 @@ impl Automaton {
     /// Returns a map of what state is in which leading partition, and the number of partitions.
     fn hopcroft_algo(&self) -> (HashMap<usize, usize>, usize) {
         let finals: HashSet<usize> = self.end.clone().into_iter().collect();
-        let mut p: VecDeque<Vec<usize>> = VecDeque::from_iter(vec![
+        let mut p: Vec<Vec<usize>> = Vec::from_iter(vec![
             (0..self.size)
                 .filter(|i| !finals.contains(i))
                 .collect::<Vec<usize>>(),
             self.end.clone(),
         ]);
+        let mut q = VecDeque::from(p.clone());
+        let mut state_partition_map = (0..self.size)
+            .map(|i| if !finals.contains(&i) { 0 } else { 1 })
+            .collect::<Vec<usize>>();
 
-        let mut q = p.clone();
         let rev_arr = self.get_reverse_transition_arr();
         while let Some(set) = q.pop_front() {
             for c in 1..self.alphabet + 1 {
                 let rs = Automaton::get_set_from_transitions(&rev_arr, &set, c);
+                let potential_partitions: HashSet<usize> = (&rs)
+                    .into_iter()
+                    .map(|i| state_partition_map.get(*i).unwrap().clone())
+                    .collect();
                 let mut changes = VecDeque::new();
-                p.iter().enumerate().for_each(|(i, v)| {
+                potential_partitions.into_iter().for_each(|i| {
+                    let v = p.get(i).unwrap();
                     let (diffs, ands) = Automaton::get_diff_ands(&v, &rs);
                     if diffs.len() > 0 && ands.len() > 0 {
                         changes.push_back((i, (diffs, ands)));
@@ -235,7 +243,10 @@ impl Automaton {
                 });
                 changes.drain(..).for_each(|(i, (diffs, ands))| {
                     *p.get_mut(i).unwrap() = diffs.clone();
-                    p.push_back(ands.clone());
+                    (&ands).into_iter().for_each(|j| {
+                        *state_partition_map.get_mut(*j).unwrap() = p.len();
+                    });
+                    p.push(ands.clone());
 
                     Automaton::replace_in_queue(
                         &mut q,
