@@ -1,4 +1,8 @@
 LoadPackage("PatternClass");;
-str := "automatons/seqstack-3-3-3.tmp";;
-PrintTo(str, GraphToAut(Seqstacks(3, 3, 3), 1, 11));;
+for i in [2..3] do
+    for j in [2..5] do
+		str := StringFormatted("./automatons/two_stack-{}-{}.tmp", i, j);;
+        PrintTo(str, GraphToAut(Seqstacks(i,j), 1, i + j + 2));;
+    od;
+od;
 QuitGap();
