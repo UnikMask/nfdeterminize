@@ -233,26 +233,22 @@ impl Automaton {
                     .into_iter()
                     .map(|i| state_partition_map.get(*i).unwrap().clone())
                     .collect();
-                let mut changes = VecDeque::new();
                 potential_partitions.into_iter().for_each(|i| {
                     let v = p.get(i).unwrap();
                     let (diffs, ands) = Automaton::get_diff_ands(&v, &rs);
                     if diffs.len() > 0 && ands.len() > 0 {
-                        changes.push_back((i, (diffs, ands)));
-                    }
-                });
-                changes.drain(..).for_each(|(i, (diffs, ands))| {
-                    *p.get_mut(i).unwrap() = diffs.clone();
-                    (&ands).into_iter().for_each(|j| {
-                        *state_partition_map.get_mut(*j).unwrap() = p.len();
-                    });
-                    p.push(ands.clone());
+                        *p.get_mut(i).unwrap() = diffs.clone();
+                        (&ands).into_iter().for_each(|j| {
+                            *state_partition_map.get_mut(*j).unwrap() = p.len();
+                        });
+                        p.push(ands.clone());
 
-                    Automaton::replace_in_queue(
-                        &mut q,
-                        p.get(i).unwrap(),
-                        VecDeque::from(vec![diffs, ands]),
-                    );
+                        Automaton::replace_in_queue(
+                            &mut q,
+                            p.get(i).unwrap(),
+                            VecDeque::from(vec![diffs, ands]),
+                        );
+                    }
                 });
             }
         }
