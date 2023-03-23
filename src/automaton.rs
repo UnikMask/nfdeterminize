@@ -1,19 +1,12 @@
-use fasthash::xx::{self, Hasher64};
+use fasthash::xx::Hasher64;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    hash::{BuildHasherDefault, Hasher},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc::{channel, Receiver, Sender},
-        Arc, Mutex,
-    },
-    thread,
+    hash::BuildHasherDefault,
 };
 
+use crate::automaton_multithreaded::rabin_scott_mt;
 use crate::ubig::Ubig;
 type HashMapXX<K, V> = HashMap<K, V, BuildHasherDefault<Hasher64>>;
-
-static N_THREADS: usize = 12;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AutomatonType {
@@ -30,6 +23,12 @@ pub struct Automaton {
     pub table: Vec<(usize, usize, usize)>,
     pub start: Vec<usize>,
     pub end: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AlgorithmKind {
+    Sequential,
+    Multithreaded,
 }
 
 impl Automaton {
@@ -62,12 +61,15 @@ impl Automaton {
     }
 
     /// Return a determinized version of the given automata - Using Rabin-Scott's Superset Construction algorithm.
-    pub fn determinized(&self) -> Automaton {
+    pub fn determinized(&self, kind: AlgorithmKind) -> Automaton {
         // Return same automaton as it already is deterministic.
         let ret = match self.automaton_type {
             AutomatonType::Det => self.clone(),
             AutomatonType::NonDet => {
-                let (transitions, a_size, a_start, a_end) = self.rabin_scott();
+                let (transitions, a_size, a_start, a_end) = match kind {
+                    AlgorithmKind::Sequential => self.rabin_scott(),
+                    AlgorithmKind::Multithreaded => rabin_scott_mt(&self),
+                };
                 return Automaton {
                     automaton_type: AutomatonType::Det,
                     size: a_size,
@@ -124,137 +126,55 @@ impl Automaton {
     /// Rabin Scott Superset Construction Algorithm - Used for determinization of NFAs.
     /// Returns: (transitions vector, number of states, start states, end states).
     fn rabin_scott(&self) -> (Vec<(usize, usize, usize)>, usize, Vec<usize>, Vec<usize>) {
-        // Shared Memory in the algorithm
-        let transitions: Arc<Mutex<Vec<(usize, usize, usize)>>> = Arc::new(Mutex::new(Vec::new()));
-        let accept_states: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
-        let num_mapper: Arc<Mutex<HashMapXX<Ubig, usize>>> =
-            Arc::new(Mutex::new(HashMapXX::default()));
-
-        // Variables belonging to threads
-        let frontier_c: Vec<Arc<Mutex<VecDeque<Ubig>>>> = (0..N_THREADS)
-            .map(|_| Arc::new(Mutex::new(VecDeque::new())))
-            .collect();
-        let (empty_tx, empty_rx): (Sender<(bool, usize)>, Receiver<(bool, usize)>) = channel();
+        // Rabin Scott Superset Construction Algorithm
+        let mut transitions: Vec<(usize, usize, usize)> = Vec::new(); // All DFA transitions
+        let mut accept_states: Vec<usize> = Vec::new(); // All accept states
+        let mut num_mapper: HashMapXX<Ubig, usize> = HashMapXX::default();
+        let mut frontier: VecDeque<Ubig> = VecDeque::new();
 
         // Select start state from all start states in the non deterministic automata.
         let transition_arr = self.get_transition_array();
         let mut start_state = Ubig::new();
         (&self.start)
             .into_iter()
-            .for_each(|s| Automaton::add_state(&transition_arr, &mut start_state, *s));
+            .for_each(|s| self.add_state(&transition_arr, &mut start_state, *s));
         for s in &self.end {
             if start_state.bit_at(s) {
-                accept_states.lock().unwrap().push(0);
+                accept_states.push(0);
                 break;
             }
         }
-        num_mapper.lock().unwrap().insert(start_state.clone(), 0);
-        frontier_c[0].lock().unwrap().push_back(start_state.clone());
-
-        // Multi-threaded code
-        thread::scope(|s| {
-            let stop_sig: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-
-            for i in 0..N_THREADS {
-                // Copied automaton properties
-                let transition_arr = transition_arr.clone();
-
-                // Mutex clones
-                let end: HashSet<usize> = self.end.iter().map(|i| *i).collect();
-                let accept_states = Arc::clone(&accept_states);
-                let transitions = Arc::clone(&transitions);
-                let stop_sig = Arc::clone(&stop_sig);
-                let num_mapper = Arc::clone(&num_mapper);
-                let frontiers: Vec<Arc<Mutex<VecDeque<Ubig>>>> =
-                    frontier_c.iter().map(|a| Arc::clone(a)).collect();
-
-                let empty_tx = empty_tx.clone();
-                let mut local_transitions: Vec<(usize, usize, usize)> = Vec::new();
-                let mut local_accepts: Vec<usize> = Vec::new();
-                let mut empty = false;
-
-                s.spawn(move || loop {
-                    let next: Option<Ubig>;
-                    let mut f = frontiers[i].lock().unwrap();
-                    next = f.pop_front();
-                    if let None = next {
-                        if !empty {
-                            empty = true;
-                            empty_tx.send((true, i)).unwrap();
-                            continue;
-                        } else if stop_sig.load(Ordering::Relaxed) {
-                            transitions.lock().unwrap().append(&mut local_transitions);
-                            accept_states.lock().unwrap().append(&mut local_accepts);
-                            break;
-                        }
-                    } else if let Some(next) = next {
-                        if empty {
-                            empty_tx.send((false, i)).unwrap();
-                            empty = false;
-                        }
-                        drop(f);
-                        for a in 1..&self.alphabet + 1 {
-                            let mut new_s = Ubig::new();
-                            for s in next.get_seq() {
-                                transition_arr[a][s].iter().for_each(|t| {
-                                    Automaton::add_state(&transition_arr, &mut new_s, *t);
-                                });
-                            }
-
-                            // Get shared num mapper HashMap and perform ops on shared memory.
-                            let mut num_mapper_l = num_mapper.lock().unwrap();
-                            let num = num_mapper_l.len();
-                            let is_new = !num_mapper_l.contains_key(&new_s);
-                            if is_new {
-                                num_mapper_l.insert(new_s.clone(), num);
-                            }
-                            local_transitions.push((
-                                *num_mapper_l.get(&next).unwrap(),
-                                a,
-                                *num_mapper_l.get(&new_s).unwrap(),
-                            ));
-                            drop(num_mapper_l);
-
-                            if is_new {
-                                let mut hasher = xx::Hasher64::default();
-                                hasher.write(&new_s.num);
-                                let hash = (hasher.finish() as usize) % N_THREADS;
-                                for s in new_s.get_seq().iter() {
-                                    if end.contains(s) {
-                                        local_accepts.push(num);
-                                        break;
-                                    }
-                                }
-                                frontiers[hash].lock().unwrap().push_back(new_s);
-                            }
-                        }
-                    }
-                });
-            }
-            // Keep track
-            let mut thread_status: Vec<bool> = (0..N_THREADS).map(|_| false).collect();
-            let mut count: i64 = N_THREADS as i64;
-            while !stop_sig.load(Ordering::Relaxed) {
-                if let Ok((empty, id)) = empty_rx.recv() {
-                    if thread_status[id] != empty {
-                        count += if empty { -1 } else { 1 };
-                        thread_status[id] = empty;
-                        if count == 0 {
-                            //println!("Kill signal sent!");
-                            stop_sig.store(true, Ordering::Relaxed);
-                        }
-                    }
-                }
-            }
-        });
+        num_mapper.insert(start_state.clone(), num_mapper.len());
+        frontier.push_back(start_state.clone());
 
         // Graph exploration - Depth-first search
-        return (
-            transitions.lock().unwrap().to_vec(),
-            num_mapper.lock().unwrap().len(),
-            vec![0],
-            accept_states.lock().unwrap().to_vec(),
-        );
+        while let Some(next) = frontier.pop_front() {
+            (1..self.alphabet + 1).for_each(|a| {
+                let mut new_s = Ubig::new();
+                next.get_seq().into_iter().for_each(|s| {
+                    (&transition_arr[a][s]).into_iter().for_each(|t| {
+                        self.add_state(&transition_arr, &mut new_s, *t);
+                    })
+                });
+
+                if !num_mapper.contains_key(&new_s) {
+                    num_mapper.insert(new_s.clone(), num_mapper.len());
+                    for s in &self.end {
+                        if new_s.bit_at(s) {
+                            accept_states.push(num_mapper.len() - 1);
+                            break;
+                        }
+                    }
+                    frontier.push_back(new_s.clone());
+                }
+                transitions.push((
+                    *num_mapper.get(&next).unwrap(),
+                    a,
+                    *num_mapper.get(&new_s).unwrap(),
+                ));
+            });
+        }
+        return (transitions, num_mapper.len(), vec![0], accept_states);
     }
 
     /// Hopcroft algorithm for minimization of a DFA.
@@ -325,7 +245,7 @@ impl Automaton {
     ///////////////
 
     /// Add a state into a set of states, adding states connected via the empty char to the set with it.
-    fn add_state(arr: &Vec<Vec<Vec<usize>>>, num: &mut Ubig, bit: usize) {
+    pub fn add_state(&self, arr: &Vec<Vec<Vec<usize>>>, num: &mut Ubig, bit: usize) {
         let mut queue: VecDeque<usize> = VecDeque::from([bit]);
         while let Some(b) = queue.pop_front() {
             if !num.bit_at(&b) {
@@ -345,7 +265,7 @@ impl Automaton {
     }
 
     /// Get a hashmap of leading states from a given letter and original state.
-    fn get_transition_array(&self) -> Vec<Vec<Vec<usize>>> {
+    pub fn get_transition_array(&self) -> Vec<Vec<Vec<usize>>> {
         let mut arr = self.get_empty_transition_arr();
         (&self.table)
             .into_iter()

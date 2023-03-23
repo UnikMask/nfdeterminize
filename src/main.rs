@@ -1,5 +1,6 @@
 mod automaton;
 pub mod automaton_encoder;
+mod automaton_multithreaded;
 mod automaton_test;
 mod transition_graphs;
 mod ubig;
@@ -12,7 +13,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use automaton::Automaton;
+use automaton::{AlgorithmKind, Automaton};
 use clap::Parser;
 use transition_graphs::{get_buffer_and_stack_aut, get_two_stack_aut};
 
@@ -123,7 +124,7 @@ fn main() {
     let final_dfa = match clap_args.action {
         Action::Run { .. } => {
             clap_args.print_verbose("Determinizing automata... ");
-            let new_dfa = automaton.determinized();
+            let new_dfa = automaton.determinized(AlgorithmKind::Multithreaded);
             if clap_args.verbose {
                 println!("Intermediate Automaton Size: {:?}", new_dfa.size);
             }
@@ -136,7 +137,7 @@ fn main() {
         }
         Action::Determinize { .. } => {
             clap_args.print_verbose("Determinizing automata... ");
-            automaton.determinized()
+            automaton.determinized(AlgorithmKind::Multithreaded)
         }
     };
 

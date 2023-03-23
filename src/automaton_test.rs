@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::automaton::Automaton;
-    use crate::automaton::AutomatonType;
+    use crate::automaton::{AlgorithmKind, Automaton, AutomatonType};
 
     impl Automaton {
         pub fn order_transitions(mut self) -> Self {
@@ -9,6 +8,8 @@ mod tests {
             self
         }
     }
+
+    const KINDS: [AlgorithmKind; 2] = [AlgorithmKind::Sequential, AlgorithmKind::Multithreaded];
 
     #[test]
     // Test the behaviour of determinization over an NFA that is already deterministic.
@@ -29,7 +30,12 @@ mod tests {
             vec![0],
             vec![0],
         );
-        assert_eq!(redundant_nd.determinized().order_transitions(), redundant_d);
+        KINDS.iter().for_each(|k| {
+            assert_eq!(
+                redundant_nd.determinized(*k).order_transitions(),
+                redundant_d
+            );
+        });
     }
 
     #[test]
@@ -44,10 +50,12 @@ mod tests {
             vec![0],
             vec![0],
         );
-        assert_eq!(
-            empty_lang_nd.determinized().order_transitions(),
-            empty_lang_d
-        );
+        KINDS.iter().for_each(|k| {
+            assert_eq!(
+                empty_lang_nd.determinized(*k).order_transitions(),
+                empty_lang_d
+            );
+        });
     }
 
     #[test]
@@ -69,10 +77,12 @@ mod tests {
             vec![0],
             vec![0],
         );
-        assert_eq!(
-            unreachable_nd.determinized().order_transitions(),
-            unreachable_d
-        );
+        KINDS.iter().for_each(|k| {
+            assert_eq!(
+                unreachable_nd.determinized(*k).order_transitions(),
+                unreachable_d
+            );
+        });
     }
 
     #[test]
@@ -103,7 +113,9 @@ mod tests {
             vec![0],
             vec![3],
         );
-        assert_eq!(sinkhole_nd.determinized().order_transitions(), sinkhole_d);
+        KINDS.iter().for_each(|k| {
+            assert_eq!(sinkhole_nd.determinized(*k).order_transitions(), sinkhole_d);
+        });
     }
 
     #[test]
@@ -126,10 +138,14 @@ mod tests {
             vec![0],
             vec![1],
         );
-        assert_eq!(
-            duplicate_transitions_nd.determinized().order_transitions(),
-            duplicate_transitions_d
-        );
+        KINDS.iter().for_each(|k| {
+            assert_eq!(
+                duplicate_transitions_nd
+                    .determinized(*k)
+                    .order_transitions(),
+                duplicate_transitions_d
+            );
+        });
     }
 
     #[test]
@@ -151,10 +167,12 @@ mod tests {
             vec![0],
             vec![1],
         );
-        assert_eq!(
-            set_of_states_nd.determinized().order_transitions(),
-            set_of_states_d
-        );
+        KINDS.iter().for_each(|k| {
+            assert_eq!(
+                set_of_states_nd.determinized(*k).order_transitions(),
+                set_of_states_d
+            );
+        });
     }
 
     #[test]
@@ -193,10 +211,12 @@ mod tests {
             vec![0],
             vec![1, 3],
         );
-        assert_eq!(
-            empty_char_nd.determinized().order_transitions(),
-            empty_char_d
-        );
+        KINDS.iter().for_each(|k| {
+            assert_eq!(
+                empty_char_nd.determinized(*k).order_transitions(),
+                empty_char_d
+            );
+        });
     }
 
     #[test]
