@@ -1,6 +1,7 @@
 mod automaton;
 pub mod automaton_encoder;
 mod automaton_multithreaded;
+mod automaton_sequential;
 mod automaton_test;
 mod transition_graphs;
 mod ubig;
