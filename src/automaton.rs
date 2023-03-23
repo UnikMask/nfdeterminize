@@ -200,10 +200,7 @@ impl Automaton {
 
                 // Loop through all sets in P.
                 for _ in 0..p.len() {
-                    let r = match p.pop_front() {
-                        Some(set) => set,
-                        None => break,
-                    };
+                    let r = p.pop_front().unwrap();
 
                     if r.intersection(&rs).next() != None && r.difference(&rs).next() != None {
                         // Get sets of intersections and differences
