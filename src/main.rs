@@ -31,6 +31,10 @@ struct ProgramArguments {
     #[clap(short, long)]
     timed: bool,
 
+    /// Specify whether the system should be run sequentially, multithreaded, or multiprocessed
+    #[clap(value_enum)]
+    mode: Option<AlgorithmKind>,
+
     #[clap(short, long)]
     /// File to print the automaton to
     file: Option<PathBuf>,
@@ -116,6 +120,11 @@ fn main() {
         println!("Automaton size: {:?}", automaton.size);
     }
 
+    let mode = match clap_args.mode {
+        None => AlgorithmKind::Multithreaded,
+        Some(k) => k,
+    };
+
     let start = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("")
@@ -124,7 +133,7 @@ fn main() {
     let final_dfa = match clap_args.action {
         Action::Run { .. } => {
             clap_args.print_verbose("Determinizing automata... ");
-            let new_dfa = automaton.determinized(AlgorithmKind::Multithreaded);
+            let new_dfa = automaton.determinized(mode);
             if clap_args.verbose {
                 println!("Intermediate Automaton Size: {:?}", new_dfa.size);
             }

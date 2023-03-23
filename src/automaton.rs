@@ -1,3 +1,4 @@
+use clap::ValueEnum;
 use fasthash::xx::Hasher64;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -25,9 +26,11 @@ pub struct Automaton {
     pub end: Vec<usize>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum AlgorithmKind {
+    /// Run command sequentially
     Sequential,
+    /// Run command in multithreaded mode
     Multithreaded,
 }
 
