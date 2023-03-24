@@ -12,7 +12,7 @@ mod tests {
         }
     }
 
-    const NUM_THREADS: usize = 2;
+    const NUM_THREADS: usize = 4;
     const KINDS: [AlgorithmKind; 2] = [
         AlgorithmKind::Sequential,
         AlgorithmKind::Multithreaded(NUM_THREADS),

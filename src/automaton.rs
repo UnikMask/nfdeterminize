@@ -117,6 +117,14 @@ impl Automaton {
         return ret;
     }
 
+    /// Reverse all transitions of the automaton
+    pub fn reverse_transitions(mut self) -> Self {
+        self.table = self.table.drain(..).map(|(s, a, e)| (e, a, s)).collect();
+        (self.start, self.end) = (self.end, self.start);
+        self.automaton_type = AutomatonType::NonDet;
+        self
+    }
+
     ///////////////
     // Utilities //
     ///////////////

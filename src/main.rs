@@ -46,12 +46,6 @@ struct ProgramArguments {
     file: Option<PathBuf>,
 }
 
-#[derive(Debug, Copy, Clone, ValueEnum)]
-enum AlgorithmAction {
-    Sequential,
-    Multithreaded,
-}
-
 impl ProgramArguments {
     pub fn print_verbose(&self, msg: &str) {
         if self.verbose {
@@ -61,7 +55,7 @@ impl ProgramArguments {
 
     pub fn get_automaton(&self) -> Automaton {
         let format: &AutomatonFormat = match &self.action {
-            Action::Run { format } => format,
+            Action::Run { format, .. } => format,
             Action::Minimize { format } => format,
             Action::Determinize { format } => format,
         };
@@ -91,12 +85,27 @@ impl ProgramArguments {
     }
 }
 
+#[derive(Debug, Copy, Clone, ValueEnum)]
+enum AlgorithmAction {
+    Sequential,
+    Multithreaded,
+}
+
+#[derive(Debug, Copy, Clone, ValueEnum)]
+enum MinimizationMethod {
+    PartitionRefine,
+    Brzozowski,
+}
+
 #[derive(clap::Subcommand, Debug)]
 enum Action {
     /// Run Determinization then minimization.
     Run {
         #[clap(subcommand)]
         format: AutomatonFormat,
+
+        #[clap(short, long, value_enum)]
+        method: Option<MinimizationMethod>,
     },
     /// Run minimization.
     Minimize {
@@ -152,14 +161,31 @@ fn main() {
         .as_millis();
 
     let final_dfa = match clap_args.action {
-        Action::Run { .. } => {
-            clap_args.print_verbose("Determinizing automata... ");
-            let new_dfa = automaton.determinized(mode);
-            if clap_args.verbose {
-                println!("Intermediate Automaton Size: {:?}", new_dfa.size);
+        Action::Run { method, .. } => {
+            let method = match method {
+                None => MinimizationMethod::PartitionRefine,
+                Some(m) => m,
+            };
+            match method {
+                MinimizationMethod::PartitionRefine => {
+                    clap_args.print_verbose("Determinizing automata... ");
+                    let new_dfa = automaton.determinized(mode);
+                    if clap_args.verbose {
+                        println!("Intermediate Automaton Size: {:?}", new_dfa.size);
+                    }
+                    clap_args.print_verbose("Minimizing automata... ");
+                    new_dfa.minimized()
+                }
+                MinimizationMethod::Brzozowski => {
+                    clap_args.print_verbose("Determinizing automata... ");
+                    let new_dfa = automaton.reverse_transitions().determinized(mode);
+                    if clap_args.verbose {
+                        println!("Intermediate Automaton Size: {:?}", new_dfa.size);
+                    }
+                    clap_args.print_verbose("Redeterminizing automata... ");
+                    new_dfa.reverse_transitions().determinized(mode)
+                }
             }
-            clap_args.print_verbose("Minimizing automata... ");
-            new_dfa.minimized()
         }
         Action::Minimize { .. } => {
             clap_args.print_verbose("Minimizing automata... ");

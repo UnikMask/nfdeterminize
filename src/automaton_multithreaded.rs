@@ -210,6 +210,8 @@ fn rabin_scott_worker_mt(tm: RabinScottWorkerThreadMembers) {
     }
 }
 
+/// Explore-state loop of a superset construction worker thread -
+/// Main component of superset construction.
 fn rabin_scott_worker_mt_explore_loop(
     tm: &RabinScottWorkerThreadMembers,
     next: Ubig,
