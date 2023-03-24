@@ -17,6 +17,12 @@ type HashMapXX<K, V> = HashMap<K, V, BuildHasherDefault<Hasher64>>;
 
 static N_THREADS: usize = 12;
 
+////////////////
+// Algorithms //
+////////////////
+
+/// Struct of variables used for each
+/// superset construction worker thread
 struct RabinScottWorkerThreadMembers<'a> {
     aut: &'a Automaton,
     i: usize,
@@ -30,17 +36,6 @@ struct RabinScottWorkerThreadMembers<'a> {
     empty_tx: Sender<(bool, usize)>,
     id_state_map: Arc<Mutex<HashMapXX<usize, usize>>>,
 }
-
-fn get_hash(u: &Ubig, n: usize) -> usize {
-    let mut hasher = xx::Hasher64::default();
-    hasher.write(&u.num);
-    (hasher.finish() as usize) % n
-}
-
-fn get_new_id() -> usize {
-    Uuid::new_v4().as_u128() as usize
-}
-
 /// Multithreaded version of the Rabin-Scott/superset construction algorithm.
 pub fn rabin_scott_mt(
     aut: &Automaton,
@@ -103,6 +98,8 @@ pub fn rabin_scott_mt(
             };
             s.spawn(move || rabin_scott_worker_mt(tm));
         }
+
+        // Main thread work
         let mut thread_status: Vec<bool> = (0..N_THREADS).map(|_| false).collect();
         let mut count: i64 = N_THREADS as i64;
         while !stop_sig.load(Ordering::Relaxed) {
@@ -125,6 +122,10 @@ pub fn rabin_scott_mt(
     );
 }
 
+////////////////////
+// Worker Threads //
+////////////////////
+
 /// Worker thread behaviour during superset construction
 fn rabin_scott_worker_mt(tm: RabinScottWorkerThreadMembers) {
     let mut local_transitions: Vec<(usize, usize, usize)> = Vec::new();
@@ -134,43 +135,7 @@ fn rabin_scott_worker_mt(tm: RabinScottWorkerThreadMembers) {
         let next: Option<Ubig>;
         let mut f = tm.frontiers[tm.i].lock().unwrap();
         next = f.pop_front();
-        if let None = next {
-            if !empty {
-                empty = true;
-                tm.empty_tx.send((true, tm.i)).unwrap();
-                continue;
-            } else if tm.stop_sig.load(Ordering::Relaxed) {
-                tm.num_maps[tm.i]
-                    .lock()
-                    .unwrap()
-                    .drain()
-                    .for_each(|(_, id)| {
-                        let mut id_sm_locked = tm.id_state_map.lock().unwrap();
-                        let len = id_sm_locked.len();
-                        id_sm_locked.insert(id, len);
-                    });
-                tm.transitions.lock().unwrap().append(
-                    &mut local_transitions
-                        .iter()
-                        .map(|(s, a, e)| {
-                            let id_sm_locked = tm.id_state_map.lock().unwrap();
-                            (
-                                *id_sm_locked.get(s).unwrap(),
-                                *a,
-                                *id_sm_locked.get(e).unwrap(),
-                            )
-                        })
-                        .collect::<Vec<(usize, usize, usize)>>(),
-                );
-                tm.accept_states.lock().unwrap().append(
-                    &mut local_accepts
-                        .iter()
-                        .map(|s| *tm.id_state_map.lock().unwrap().get(s).unwrap())
-                        .collect(),
-                );
-                break;
-            }
-        } else if let Some(next) = next {
+        if let Some(next) = next {
             if empty {
                 tm.empty_tx.send((false, tm.i)).unwrap();
                 empty = false;
@@ -208,6 +173,58 @@ fn rabin_scott_worker_mt(tm: RabinScottWorkerThreadMembers) {
                     tm.frontiers[hash_new].lock().unwrap().push_back(new_s);
                 }
             }
+        } else {
+            if !empty {
+                empty = true;
+                tm.empty_tx.send((true, tm.i)).unwrap();
+                continue;
+            } else if tm.stop_sig.load(Ordering::Relaxed) {
+                tm.num_maps[tm.i]
+                    .lock()
+                    .unwrap()
+                    .drain()
+                    .for_each(|(_, id)| {
+                        let mut id_sm_locked = tm.id_state_map.lock().unwrap();
+                        let len = id_sm_locked.len();
+                        id_sm_locked.insert(id, len);
+                    });
+                tm.transitions.lock().unwrap().append(
+                    &mut local_transitions
+                        .iter()
+                        .map(|(s, a, e)| {
+                            let id_sm_locked = tm.id_state_map.lock().unwrap();
+                            (
+                                *id_sm_locked.get(s).unwrap(),
+                                *a,
+                                *id_sm_locked.get(e).unwrap(),
+                            )
+                        })
+                        .collect::<Vec<(usize, usize, usize)>>(),
+                );
+                tm.accept_states.lock().unwrap().append(
+                    &mut local_accepts
+                        .iter()
+                        .map(|s| *tm.id_state_map.lock().unwrap().get(s).unwrap())
+                        .collect(),
+                );
+                break;
+            }
         }
     }
+}
+
+//////////////////////
+// Helper Functions //
+//////////////////////
+
+/// Get the hash of a Ubig
+fn get_hash(u: &Ubig, n: usize) -> usize {
+    let mut hasher = xx::Hasher64::default();
+    hasher.write(&u.num);
+    (hasher.finish() as usize) % n
+}
+
+/// Get a random new ID to assign to a state
+fn get_new_id() -> usize {
+    Uuid::new_v4().as_u128() as usize
 }
