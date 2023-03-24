@@ -1,3 +1,4 @@
+#![feature(scoped_threads)]
 mod automaton;
 pub mod automaton_encoder;
 mod automaton_multithreaded;
