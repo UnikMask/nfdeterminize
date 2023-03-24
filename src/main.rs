@@ -15,8 +15,10 @@ use std::{
 };
 
 use automaton::{AlgorithmKind, Automaton};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use transition_graphs::{get_buffer_and_stack_aut, get_two_stack_aut};
+
+static N_THREADS: usize = 12;
 
 #[derive(clap::Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -32,13 +34,22 @@ struct ProgramArguments {
     #[clap(short, long)]
     timed: bool,
 
+    #[clap(short, long)]
+    n_threads: Option<usize>,
+
     /// Specify whether the system should be run sequentially, multithreaded, or multiprocessed
-    #[clap(value_enum)]
-    mode: Option<AlgorithmKind>,
+    #[clap(short, long, value_enum)]
+    mode: Option<AlgorithmAction>,
 
     #[clap(short, long)]
     /// File to print the automaton to
     file: Option<PathBuf>,
+}
+
+#[derive(Debug, Copy, Clone, ValueEnum)]
+enum AlgorithmAction {
+    Sequential,
+    Multithreaded,
 }
 
 impl ProgramArguments {
@@ -121,9 +132,18 @@ fn main() {
         println!("Automaton size: {:?}", automaton.size);
     }
 
+    // Set the mode of the program - sequential or multithreaded, with number of threads
     let mode = match clap_args.mode {
-        None => AlgorithmKind::Multithreaded,
+        None => AlgorithmAction::Multithreaded,
         Some(k) => k,
+    };
+    let n_threads = match clap_args.n_threads {
+        None => N_THREADS,
+        Some(n) => n,
+    };
+    let mode = match mode {
+        AlgorithmAction::Sequential => AlgorithmKind::Sequential,
+        AlgorithmAction::Multithreaded => AlgorithmKind::Multithreaded(n_threads),
     };
 
     let start = SystemTime::now()
@@ -147,7 +167,7 @@ fn main() {
         }
         Action::Determinize { .. } => {
             clap_args.print_verbose("Determinizing automata... ");
-            automaton.determinized(AlgorithmKind::Multithreaded)
+            automaton.determinized(mode)
         }
     };
 

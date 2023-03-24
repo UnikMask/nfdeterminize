@@ -1,4 +1,3 @@
-use clap::ValueEnum;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::automaton_multithreaded::rabin_scott_mt;
@@ -22,12 +21,12 @@ pub struct Automaton {
     pub end: Vec<usize>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AlgorithmKind {
     /// Run command sequentially
     Sequential,
     /// Run command in multithreaded mode
-    Multithreaded,
+    Multithreaded(usize),
 }
 
 impl Automaton {
@@ -67,7 +66,7 @@ impl Automaton {
             AutomatonType::NonDet => {
                 let (transitions, a_size, a_start, a_end) = match kind {
                     AlgorithmKind::Sequential => rabin_scott_seq(&self),
-                    AlgorithmKind::Multithreaded => rabin_scott_mt(&self),
+                    AlgorithmKind::Multithreaded(n_threads) => rabin_scott_mt(&self, n_threads),
                 };
                 return Automaton {
                     automaton_type: AutomatonType::Det,

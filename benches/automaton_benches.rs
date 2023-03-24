@@ -4,7 +4,12 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use nfdeterminize::automaton::{AlgorithmKind, Automaton};
 use nfdeterminize::transition_graphs::{get_buffer_and_stack_aut, get_two_stack_aut};
 
-const AUT_KINDS: [AlgorithmKind; 2] = [AlgorithmKind::Sequential, AlgorithmKind::Multithreaded];
+const N_THREADS: usize = 16;
+
+const AUT_KINDS: [AlgorithmKind; 2] = [
+    AlgorithmKind::Sequential,
+    AlgorithmKind::Multithreaded(N_THREADS),
+];
 
 const NUM_BNS_BUFFERS: Range<usize> = 2..4;
 const NUM_BNS_STACKS: Range<usize> = 2..8;
