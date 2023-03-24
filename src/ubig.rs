@@ -1,8 +1,20 @@
+use lz4_flex::{compress_prepend_size, decompress_size_prepended};
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, Eq)]
 pub struct Ubig {
     pub num: Vec<u8>,
+}
+
+#[derive(Clone)]
+pub struct CompressedUbig {
+    pub cnum: Vec<u8>,
+}
+
+impl Hash for CompressedUbig {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.cnum.hash(state);
+    }
 }
 
 impl Hash for Ubig {
@@ -31,6 +43,14 @@ impl PartialEq for Ubig {
             }
         }
         return true;
+    }
+}
+
+impl CompressedUbig {
+    fn decompress(self) -> Ubig {
+        Ubig {
+            num: decompress_size_prepended(self.cnum.as_slice().clone()).unwrap(),
+        }
     }
 }
 
@@ -95,12 +115,27 @@ impl Ubig {
         }
         self.num.push(0);
     }
+
+    fn compress(self) -> CompressedUbig {
+        return CompressedUbig {
+            cnum: compress_prepend_size(self.num.as_slice().clone()),
+        };
+    }
 }
 
 #[cfg(test)]
 mod ubig_tests {
 
-    use super::Ubig;
+    use std::hash::Hasher;
+
+    use super::{CompressedUbig, Ubig};
+    use fasthash::xx::Hasher64;
+
+    fn get_hash(u: &CompressedUbig, n: usize) -> usize {
+        let mut hasher = Hasher64::default();
+        hasher.write(&u.cnum);
+        (hasher.finish() as usize) % n
+    }
 
     // Helpher methods for testing - generates ubigs from a single bit or from sequences of bits.
     impl Ubig {
@@ -173,5 +208,16 @@ mod ubig_tests {
         assert_eq!(test_ubig.bit_at(&11), true);
         test_ubig.set_to(&11, false);
         assert_eq!(test_ubig.bit_at(&11), false);
+    }
+
+    #[test]
+    fn test_compress_decompress() {
+        let test_seq = vec![1, 8, 24, 32, 121];
+        let u = Ubig::from_seq(&test_seq);
+        let uc = u.clone().compress();
+
+        assert_eq!(uc.decompress(), u);
+        let un = Ubig::from_seq(&test_seq);
+        assert_eq!(get_hash(&u.compress(), 8), get_hash(&un.compress(), 8));
     }
 }
