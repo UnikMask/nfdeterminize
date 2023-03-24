@@ -212,7 +212,7 @@ mod ubig_tests {
 
     #[test]
     fn test_compress_decompress() {
-        let test_seq = vec![1, 8, 24, 32, 121];
+        let test_seq = vec![1, 8, 24, 32, 121, 12389, 120321];
         let u = Ubig::from_seq(&test_seq);
         let uc = u.clone().compress();
 
