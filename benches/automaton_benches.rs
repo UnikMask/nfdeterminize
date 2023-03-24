@@ -4,7 +4,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use nfdeterminize::automaton::{AlgorithmKind, Automaton};
 use nfdeterminize::transition_graphs::{get_buffer_and_stack_aut, get_two_stack_aut};
 
-const N_THREADS: usize = 16;
+const N_THREADS: usize = 12;
 
 const AUT_KINDS: [AlgorithmKind; 2] = [
     AlgorithmKind::Sequential,
@@ -19,16 +19,18 @@ const NUM_GAP_BUFFERS: Range<usize> = 2..4;
 const NUM_GAP_STACKS: Range<usize> = 2..6;
 const AUTOMATONS_PATH: &str = "automatons/";
 
+// Comparative benches
 fn run_bns_benchmark(c: &mut Criterion) {
     for k in AUT_KINDS {
         for i in NUM_BNS_BUFFERS {
             for j in NUM_BNS_STACKS {
                 let mut automaton = get_buffer_and_stack_aut(i, j);
                 c.bench_function(&format!("determinize bns {i} {j} {k:?}"), |b| {
-                    b.iter(|| automaton = automaton.determinized(k))
+                    b.iter(|| automaton.determinized(k))
                 });
+                automaton = automaton.determinized(k);
                 c.bench_function(&format!("minimize bns {i} {j} {k:?}"), |b| {
-                    b.iter(|| automaton = automaton.minimized())
+                    b.iter(|| automaton.minimized())
                 });
             }
         }
@@ -40,16 +42,16 @@ fn run_two_stack_benchmark(c: &mut Criterion) {
             for j in NUM_TWO_STACK_STACK1 {
                 let mut automaton = get_two_stack_aut(i, j);
                 c.bench_function(&format!("determinize two-stack {i} {j} {k:?}"), |b| {
-                    b.iter(|| automaton = automaton.determinized(k))
+                    b.iter(|| automaton.determinized(k))
                 });
+                automaton = automaton.determinized(k);
                 c.bench_function(&format!("minimize two-stack {i} {j} {k:?}"), |b| {
-                    b.iter(|| automaton = automaton.minimized())
+                    b.iter(|| automaton.minimized())
                 });
             }
         }
     }
 }
-
 fn run_gap_benchmarks(c: &mut Criterion) {
     for k in AUT_KINDS {
         for i in NUM_GAP_BUFFERS {
@@ -60,10 +62,11 @@ fn run_gap_benchmarks(c: &mut Criterion) {
                         .to_string(),
                 );
                 c.bench_function(&format!("determinize file bns {i} {j} {k:?}"), |b| {
-                    b.iter(|| automaton = automaton.determinized(k))
+                    b.iter(|| automaton.determinized(k))
                 });
+                automaton = automaton.determinized(k);
                 c.bench_function(&format!("minimize file bns {i} {j} {k:?}"), |b| {
-                    b.iter(|| automaton = automaton.minimized())
+                    b.iter(|| automaton.minimized())
                 });
             }
         }

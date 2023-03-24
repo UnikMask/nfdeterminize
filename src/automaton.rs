@@ -11,7 +11,7 @@ pub enum AutomatonType {
 }
 
 // Structure for an automaton.
-#[derive(Debug, Eq, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Automaton {
     pub automaton_type: AutomatonType,
     pub size: usize,

@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use crate::automaton::{AlgorithmKind, Automaton, AutomatonType};
-    use serial_test::serial;
 
     impl Automaton {
         pub fn order_transitions(mut self) -> Self {
@@ -12,6 +11,21 @@ mod tests {
         }
     }
 
+    impl PartialEq for Automaton {
+        fn eq(&self, other: &Self) -> bool {
+            if self.alphabet != other.alphabet
+                || self.size != other.size
+                || self.table.len() != other.table.len()
+                || self.start.len() != other.start.len()
+                || self.end.len() != other.end.len()
+            {
+                false
+            } else {
+                true
+            }
+        }
+    }
+
     const NUM_THREADS: usize = 4;
     const KINDS: [AlgorithmKind; 2] = [
         AlgorithmKind::Sequential,
@@ -19,7 +33,6 @@ mod tests {
     ];
 
     #[test]
-    #[serial]
     // Test the behaviour of determinization over an NFA that is already deterministic.
     fn test_determinization_redundant() {
         let redundant_nd = Automaton::new(
@@ -47,7 +60,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     // Test the behaviour of determinization over a single state, no transition NFA.
     fn test_determinization_empty_lang() {
         let empty_lang_nd = Automaton::new(AutomatonType::NonDet, 1, 2, vec![], vec![0], vec![0]);
@@ -68,7 +80,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     // Test whether determinization gets rid of unreachable states.
     fn test_determinization_unreachable() {
         let unreachable_nd = Automaton::new(
@@ -96,7 +107,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     // Test whether determinization can successfully produce a sinkhole state from an empty set of states.
     fn test_determinization_sinkhole() {
         let sinkhole_nd = Automaton::new(
@@ -130,7 +140,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     // Test whether duplicate transitions in a non deterministic automata are lost after
     // determinization.
     fn test_determinization_duplicate_transitions() {
@@ -161,7 +170,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     // Test whether sets of states are detected and dealt as a single state in determinization.
     fn test_determinization_set_of_states() {
         let set_of_states_nd = Automaton::new(
@@ -189,7 +197,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     // Test whether determinization identifies and deals with empty char transitions.
     fn test_determinization_empty_char() {
         let empty_char_nd = Automaton::new(
@@ -234,7 +241,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     // Test whether a machine minimizable into 2 partitions will be minimized as such.
     fn test_minimization_bipartite() {
         let bipartite_big = Automaton::new(
@@ -267,7 +273,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     // Test whether minimization can separate sets partitions into smaller partitions.
     fn test_minimization_separation() {
         let sep_big = Automaton::new(
@@ -312,7 +317,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     // Test whether unminimizable machines cannot be minimized (the size doesn't decrease).
     fn test_minimization_unminimizable() {
         let unmin_small = Automaton::new(

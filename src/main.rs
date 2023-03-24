@@ -198,6 +198,7 @@ fn main() {
     };
 
     // Print final dfa to file/stdout
+    clap_args.print_verbose(&format!("Final Automaton size: {:?}\n", final_dfa.size));
     if let Some(fp) = clap_args.file {
         if let Ok(mut f) = File::create(fp.clone()) {
             if let Err(_) = f.write_all(format!("{final_dfa:?}").as_bytes()) {

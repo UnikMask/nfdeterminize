@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     hash::{BuildHasherDefault, Hasher},
     sync::{
-        atomic::{AtomicU8, Ordering},
+        atomic::{AtomicBool, Ordering},
         mpsc::{channel, Receiver, Sender},
         Arc, Mutex,
     },
@@ -14,10 +14,7 @@ use uuid::Uuid;
 use crate::{automaton::Automaton, ubig::Ubig};
 
 type HashMapXX<K, V> = HashMap<K, V, BuildHasherDefault<Hasher64>>;
-
-static DETERMINIZATION_STATE_EXPLORE: u8 = 0;
-static DETERMINIZATION_STATE_MAP: u8 = 1;
-static DETERMINIZATION_STATE_COMPILE: u8 = 2;
+type Transition = (usize, usize, usize);
 
 ////////////////
 // Algorithms //
@@ -31,23 +28,24 @@ struct RabinScottWorkerThreadMembers<'a> {
     n_threads: usize,
     transition_arr: Vec<Vec<Vec<usize>>>,
     end: HashSet<usize>,
-    accept_states: Arc<Mutex<Vec<usize>>>,
-    transitions: Arc<Mutex<Vec<(usize, usize, usize)>>>,
-    step_sig: Arc<AtomicU8>,
+    stop_sig: Arc<AtomicBool>,
     num_maps: Vec<Arc<Mutex<HashMapXX<Ubig, usize>>>>,
     frontiers: Vec<Arc<Mutex<VecDeque<Ubig>>>>,
-    empty_tx: Sender<(bool, usize)>,
-    id_state_map: Arc<Mutex<HashMapXX<usize, usize>>>,
+    frontier_empty_tx: Sender<(bool, usize)>,
+    reduce_tx: Sender<usize>,
+    transition_tx: Sender<Transition>,
+    accept_tx: Sender<usize>,
 }
 
 /// Multithreaded version of the Rabin-Scott/superset construction algorithm.
 pub fn rabin_scott_mt(
     aut: &Automaton,
     n_threads: usize,
-) -> (Vec<(usize, usize, usize)>, usize, Vec<usize>, Vec<usize>) {
+) -> (Vec<Transition>, usize, Vec<usize>, Vec<usize>) {
     // Shared Memory in the algorithm
-    let transitions: Arc<Mutex<Vec<(usize, usize, usize)>>> = Arc::new(Mutex::new(Vec::new()));
-    let accept_states: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut transitions: Vec<Transition> = Vec::new();
+    let mut accept_states: Vec<usize> = Vec::new();
+    let mut id_state_map: HashMapXX<usize, usize> = HashMapXX::default();
 
     // Variables belonging to threads
     let num_maps: Vec<Arc<Mutex<HashMapXX<Ubig, usize>>>> = (0..n_threads)
@@ -56,9 +54,11 @@ pub fn rabin_scott_mt(
     let frontier_c: Vec<Arc<Mutex<VecDeque<Ubig>>>> = (0..n_threads)
         .map(|_| Arc::new(Mutex::new(VecDeque::new())))
         .collect();
-    let (empty_tx, empty_rx): (Sender<(bool, usize)>, Receiver<(bool, usize)>) = channel();
-    let id_state_map: Arc<Mutex<HashMapXX<usize, usize>>> =
-        Arc::new(Mutex::new(HashMapXX::default()));
+    let (frontier_empty_tx, frontier_empty_rx): (Sender<(bool, usize)>, Receiver<(bool, usize)>) =
+        channel();
+    let (reduce_tx, reduce_rx): (Sender<usize>, Receiver<usize>) = channel();
+    let (transition_tx, transition_rx): (Sender<Transition>, Receiver<Transition>) = channel();
+    let (accept_tx, accept_rx): (Sender<usize>, Receiver<usize>) = channel();
 
     // Select start state from all start states in the non deterministic automata.
     let transition_arr = aut.get_transition_array();
@@ -68,12 +68,12 @@ pub fn rabin_scott_mt(
         .for_each(|s| aut.add_state(&transition_arr, &mut start_state, *s));
     for s in &aut.end {
         if start_state.bit_at(s) {
-            accept_states.lock().unwrap().push(0);
+            accept_states.push(0);
             break;
         }
     }
     let start_hash = get_hash(&start_state, n_threads);
-    id_state_map.lock().unwrap().insert(0, 0);
+    id_state_map.insert(0, 0);
     num_maps[start_hash]
         .lock()
         .unwrap()
@@ -84,7 +84,7 @@ pub fn rabin_scott_mt(
         .push_back(start_state.clone());
 
     thread::scope(|s| {
-        let step_sig: Arc<AtomicU8> = Arc::new(AtomicU8::new(DETERMINIZATION_STATE_EXPLORE));
+        let stop_sig: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
         // Initialise worker thread vars and spawn worker threads
         for i in 0..n_threads {
@@ -94,47 +94,55 @@ pub fn rabin_scott_mt(
                 i,
                 n_threads,
                 end: aut.end.iter().map(|i| *i).collect(),
-                accept_states: Arc::clone(&accept_states),
-                transitions: Arc::clone(&transitions),
-                step_sig: Arc::clone(&step_sig),
+                stop_sig: Arc::clone(&stop_sig),
                 num_maps: num_maps.iter().map(|a| Arc::clone(a)).collect(),
                 frontiers: frontier_c.iter().map(|a| Arc::clone(a)).collect(),
-                id_state_map: Arc::clone(&id_state_map),
-                empty_tx: empty_tx.clone(),
+                transition_tx: transition_tx.clone(),
+                reduce_tx: reduce_tx.clone(),
+                accept_tx: accept_tx.clone(),
+                frontier_empty_tx: frontier_empty_tx.clone(),
             };
             s.spawn(move || rabin_scott_worker_mt(tm));
         }
 
         // Main thread work
         let mut thread_status: Vec<bool> = (0..n_threads).map(|_| false).collect();
-        let mut count: i64 = n_threads as i64;
-        while step_sig.load(Ordering::Relaxed) == DETERMINIZATION_STATE_EXPLORE {
-            if let Ok((empty, id)) = empty_rx.recv() {
+        let mut count = n_threads as i64;
+        while !stop_sig.load(Ordering::Relaxed) {
+            if let Ok((empty, id)) = frontier_empty_rx.recv() {
                 if thread_status[id] != empty {
                     count += if empty { -1 } else { 1 };
                     thread_status[id] = empty;
                     if count == 0 {
-                        step_sig.store(DETERMINIZATION_STATE_MAP, Ordering::Relaxed);
+                        stop_sig.store(true, Ordering::Relaxed);
                     }
                 }
             }
         }
         count = n_threads as i64;
-        while step_sig.load(Ordering::Relaxed) == DETERMINIZATION_STATE_MAP {
-            if let Ok((_, _)) = empty_rx.recv() {
-                count -= 1;
-                if count == 0 {
-                    step_sig.store(DETERMINIZATION_STATE_COMPILE, Ordering::Relaxed);
+        let mut threads_reduces = (0..n_threads).map(|_| false).collect::<Vec<bool>>();
+        while count > 0 {
+            if let Ok(tr) = transition_rx.try_recv() {
+                add_transition(tr, &mut transitions, &mut id_state_map);
+            }
+            if let Ok(s) = accept_rx.try_recv() {
+                add_accept(s, &mut accept_states, &mut id_state_map);
+            }
+            if let Ok(thread) = reduce_rx.try_recv() {
+                if !threads_reduces[thread] {
+                    count -= 1;
+                    threads_reduces[thread] = true;
                 }
             }
         }
+        transition_rx
+            .try_iter()
+            .for_each(|tr| add_transition(tr, &mut transitions, &mut id_state_map));
+        accept_rx
+            .try_iter()
+            .for_each(|s| add_accept(s, &mut accept_states, &mut id_state_map));
     });
-    return (
-        transitions.lock().unwrap().to_vec(),
-        id_state_map.lock().unwrap().len(),
-        vec![0],
-        accept_states.lock().unwrap().to_vec(),
-    );
+    return (transitions, id_state_map.len(), vec![0], accept_states);
 }
 
 ////////////////////
@@ -143,18 +151,17 @@ pub fn rabin_scott_mt(
 
 /// Worker thread behaviour during superset construction
 fn rabin_scott_worker_mt(tm: RabinScottWorkerThreadMembers) {
-    let mut local_transitions: Vec<(usize, usize, usize)> = Vec::new();
+    let mut local_transitions: Vec<Transition> = Vec::new();
     let mut local_accepts: Vec<usize> = Vec::new();
-    let mut empty = false;
-    let mut local_step = DETERMINIZATION_STATE_EXPLORE;
+    let mut frontier_empty = false;
     loop {
         let next: Option<Ubig>;
         let mut f = tm.frontiers[tm.i].lock().unwrap();
         next = f.pop_front();
         if let Some(next) = next {
-            if empty {
-                tm.empty_tx.send((false, tm.i)).unwrap();
-                empty = false;
+            if frontier_empty {
+                tm.frontier_empty_tx.send((false, tm.i)).unwrap();
+                frontier_empty = false;
             }
             drop(f);
             rabin_scott_worker_mt_explore_loop(
@@ -163,48 +170,18 @@ fn rabin_scott_worker_mt(tm: RabinScottWorkerThreadMembers) {
                 &mut local_transitions,
                 &mut local_accepts,
             );
-        } else if !empty {
-            empty = true;
-            tm.empty_tx.send((true, tm.i)).unwrap();
+        } else if !frontier_empty {
+            frontier_empty = true;
+            tm.frontier_empty_tx.send((true, tm.i)).unwrap();
             continue;
-        } else if tm.step_sig.load(Ordering::Relaxed) == DETERMINIZATION_STATE_MAP
-            && local_step == DETERMINIZATION_STATE_EXPLORE
-        {
-            local_step = DETERMINIZATION_STATE_MAP;
-            tm.num_maps[tm.i]
-                .lock()
-                .unwrap()
-                .drain()
-                .for_each(|(_, id)| {
-                    if id != 0 {
-                        let mut id_sm_locked = tm.id_state_map.lock().unwrap();
-                        let len = id_sm_locked.len();
-                        id_sm_locked.insert(id, len);
-                    }
-                });
-            tm.empty_tx.send((true, tm.i)).unwrap();
-        } else if tm.step_sig.load(Ordering::Relaxed) == DETERMINIZATION_STATE_COMPILE
-            && local_step == DETERMINIZATION_STATE_MAP
-        {
-            tm.transitions.lock().unwrap().append(
-                &mut local_transitions
-                    .iter()
-                    .map(|(s, a, e)| {
-                        let id_sm_locked = tm.id_state_map.lock().unwrap();
-                        (
-                            *id_sm_locked.get(s).unwrap(),
-                            *a,
-                            *id_sm_locked.get(e).unwrap(),
-                        )
-                    })
-                    .collect::<Vec<(usize, usize, usize)>>(),
-            );
-            tm.accept_states.lock().unwrap().append(
-                &mut local_accepts
-                    .iter()
-                    .map(|s| *tm.id_state_map.lock().unwrap().get(s).unwrap())
-                    .collect(),
-            );
+        } else if tm.stop_sig.load(Ordering::Relaxed) {
+            local_transitions
+                .drain(..)
+                .for_each(|(s, a, e)| tm.transition_tx.send((s, a, e)).unwrap());
+            local_accepts
+                .drain(..)
+                .for_each(|s| tm.accept_tx.send(s).unwrap());
+            tm.reduce_tx.send(tm.i).unwrap();
             break;
         }
     }
@@ -215,7 +192,7 @@ fn rabin_scott_worker_mt(tm: RabinScottWorkerThreadMembers) {
 fn rabin_scott_worker_mt_explore_loop(
     tm: &RabinScottWorkerThreadMembers,
     next: Ubig,
-    local_transitions: &mut Vec<(usize, usize, usize)>,
+    local_transitions: &mut Vec<Transition>,
     local_accepts: &mut Vec<usize>,
 ) {
     for a in 1..&tm.aut.alphabet + 1 {
@@ -247,7 +224,11 @@ fn rabin_scott_worker_mt_explore_loop(
                     break;
                 }
             }
-            tm.frontiers[hash_new].lock().unwrap().push_back(new_s);
+            let mut new_frontier = tm.frontiers[hash_new].lock().unwrap();
+            if new_frontier.len() == 0 {
+                tm.frontier_empty_tx.send((false, hash_new)).unwrap();
+            }
+            new_frontier.push_back(new_s);
         }
     }
 }
@@ -255,6 +236,32 @@ fn rabin_scott_worker_mt_explore_loop(
 //////////////////////
 // Helper Functions //
 //////////////////////
+
+fn add_transition(
+    transition: Transition,
+    transitions: &mut Vec<Transition>,
+    id_state_map: &mut HashMapXX<usize, usize>,
+) {
+    let (s, a, e) = transition;
+    let new_states = vec![s.clone(), e.clone()];
+    new_states.iter().for_each(|ns| {
+        if !id_state_map.contains_key(ns) {
+            id_state_map.insert(*ns, id_state_map.len());
+        }
+    });
+    transitions.push((
+        *id_state_map.get(&s).unwrap(),
+        a,
+        *id_state_map.get(&e).unwrap(),
+    ));
+}
+
+fn add_accept(s: usize, accepts: &mut Vec<usize>, id_state_map: &mut HashMapXX<usize, usize>) {
+    if !id_state_map.contains_key(&s) {
+        id_state_map.insert(s.clone(), id_state_map.len());
+    }
+    accepts.push(*id_state_map.get(&s).unwrap());
+}
 
 /// Get the hash of a Ubig
 fn get_hash(u: &Ubig, n: usize) -> usize {

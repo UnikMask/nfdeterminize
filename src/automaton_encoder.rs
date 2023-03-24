@@ -10,11 +10,9 @@ struct AutomatonParser;
 
 impl From<&String> for Automaton {
     fn from(s: &String) -> Self {
-        println!("Parsing...");
         return match AutomatonParser::parse(Rule::automaton, s) {
             Ok(mut pairs) => {
                 // Get contents of automaton from automaton -> core -> inner
-                println!("Accessing core...");
                 let mut contents = pairs
                     .next()
                     .unwrap()
@@ -25,7 +23,6 @@ impl From<&String> for Automaton {
                 let mut ret = Automaton::empty();
 
                 // Get the pairs for all the properties of the automaton.
-                println!("Determining type...");
                 ret.automaton_type = match contents.next().unwrap().as_str() {
                     "det" => AutomatonType::Det,
                     "nondet" => AutomatonType::NonDet,
@@ -34,7 +31,6 @@ impl From<&String> for Automaton {
                 };
 
                 // Set size and alphabet.
-                println!("Determining size and alphabet");
                 ret.size = str::parse(contents.next().unwrap().as_str()).unwrap();
                 let alphabet_parse = contents.next().unwrap();
                 match alphabet_parse.as_rule() {
@@ -50,7 +46,6 @@ impl From<&String> for Automaton {
                 }
 
                 // Set transitions
-                println!("Creating tuple table...");
                 let mut tuple_table: Vec<(usize, usize, usize)> = Vec::new();
                 let mut epsilon_increment = 1;
                 for (i_a, a) in contents
@@ -99,7 +94,6 @@ impl From<&String> for Automaton {
                 ret.table = tuple_table;
 
                 // Set start states.
-                println!("Getting start states...");
                 let mut start: Vec<usize> = Vec::new();
                 for num in contents.next().unwrap().into_inner() {
                     start.push(str::parse(num.as_str().trim()).unwrap());
@@ -107,7 +101,6 @@ impl From<&String> for Automaton {
                 ret.start = start;
 
                 // Set ends states.
-                println!("Creating end states...");
                 let mut end: Vec<usize> = Vec::new();
                 for num in contents.next().unwrap().into_inner() {
                     end.push(str::parse(num.as_str().trim()).unwrap());
