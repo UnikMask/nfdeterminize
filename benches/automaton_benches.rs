@@ -1,6 +1,6 @@
 use std::{fs, ops::Range, time::Duration};
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use nfdeterminize::automaton::{AlgorithmKind, Automaton};
 use nfdeterminize::transition_graphs::{get_buffer_and_stack_aut, get_two_stack_aut};
 
@@ -13,6 +13,7 @@ const AUT_KINDS: [AlgorithmKind; 2] = [
 
 const NUM_BNS_BUFFERS: Range<usize> = 2..4;
 const NUM_BNS_STACKS: Range<usize> = 2..8;
+const BNS_MT_INCREASE: (usize, usize) = (3, 7);
 const NUM_TWO_STACK_STACK0: Range<usize> = 2..4;
 const NUM_TWO_STACK_STACK1: Range<usize> = 2..6;
 const NUM_GAP_BUFFERS: Range<usize> = 2..4;
@@ -72,10 +73,22 @@ fn run_gap_benchmarks(c: &mut Criterion) {
         }
     }
 }
+fn run_mt_increase(c: &mut Criterion) {
+    for k in 0..N_THREADS {
+        let automaton = get_buffer_and_stack_aut(BNS_MT_INCREASE.0, BNS_MT_INCREASE.1);
+        c.bench_with_input(
+            BenchmarkId::new(&format!("determinize bns 3 7 mult_incr"), k),
+            &k,
+            |b, &s| {
+                b.iter(|| automaton.determinized(AlgorithmKind::Multithreaded(s.clone())));
+            },
+        );
+    }
+}
 
 criterion_group! {
     name = benches;
     config = Criterion::default().significance_level(0.05).sample_size(25).measurement_time(Duration::new(5, 0));
-    targets = run_bns_benchmark, run_two_stack_benchmark, run_gap_benchmarks
+    targets = run_bns_benchmark, run_two_stack_benchmark, run_gap_benchmarks, run_mt_increase
 }
 criterion_main!(benches);
