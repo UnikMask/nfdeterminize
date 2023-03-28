@@ -14,6 +14,7 @@ const AUT_KINDS: [AlgorithmKind; 2] = [
 const NUM_BNS_BUFFERS: Range<usize> = 2..4;
 const NUM_BNS_STACKS: Range<usize> = 2..8;
 const BNS_MT_INCREASE: (usize, usize) = (3, 7);
+const BNS_MT_INCREASE_LO: (usize, usize) = (3, 4);
 const NUM_TWO_STACK_STACK0: Range<usize> = 2..4;
 const NUM_TWO_STACK_STACK1: Range<usize> = 2..6;
 const NUM_GAP_BUFFERS: Range<usize> = 2..4;
@@ -74,10 +75,18 @@ fn run_gap_benchmarks(c: &mut Criterion) {
     }
 }
 fn run_mt_increase(c: &mut Criterion) {
-    for k in 0..N_THREADS {
+    for k in 2..N_THREADS {
         let automaton = get_buffer_and_stack_aut(BNS_MT_INCREASE.0, BNS_MT_INCREASE.1);
         c.bench_with_input(
             BenchmarkId::new(&format!("determinize bns 3 7 mult_incr"), k),
+            &k,
+            |b, &s| {
+                b.iter(|| automaton.determinized(AlgorithmKind::Multithreaded(s.clone())));
+            },
+        );
+        let automaton = get_buffer_and_stack_aut(BNS_MT_INCREASE_LO.0, BNS_MT_INCREASE_LO.1);
+        c.bench_with_input(
+            BenchmarkId::new(&format!("determinize bns 3 4 mult_incr"), k),
             &k,
             |b, &s| {
                 b.iter(|| automaton.determinized(AlgorithmKind::Multithreaded(s.clone())));
