@@ -37,3 +37,7 @@ Some GAP scripts included in the project, that deal with automaton generation us
 
 - `generate-bns.g` - Generates and prints buffer and stack TPN NFAs of size 2-2 to 3-7.
 - `generate-seqstack.g` - Generates two-stack automata of size 2-2 to 3-5.
+
+# Benchmarks
+To run benchmarks, run `cargo bench`.
+NOTE: Make sure to generate the GAP-generated automatons before running benchmarks (See above).
