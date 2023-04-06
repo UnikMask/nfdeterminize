@@ -6,7 +6,7 @@ pub struct Ubig {
     pub num: Vec<u8>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CompressedUbig {
     pub cnum: Vec<u8>,
 }
@@ -116,7 +116,7 @@ impl Ubig {
         self.num.push(0);
     }
 
-    fn compress(self) -> CompressedUbig {
+    pub fn compress(self) -> CompressedUbig {
         return CompressedUbig {
             cnum: compress_prepend_size(self.num.as_slice().clone()),
         };

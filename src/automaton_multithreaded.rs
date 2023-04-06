@@ -11,7 +11,10 @@ use std::{
 };
 use uuid::Uuid;
 
-use crate::{automaton::Automaton, ubig::Ubig};
+use crate::{
+    automaton::Automaton,
+    ubig::{CompressedUbig, Ubig},
+};
 
 type HashMapXX<K, V> = HashMap<K, V, BuildHasherDefault<Hasher64>>;
 type Transition = (usize, usize, usize);
@@ -29,7 +32,7 @@ struct RabinScottWorkerThreadMembers<'a> {
     transition_arr: Vec<Vec<Vec<usize>>>,
     end: HashSet<usize>,
     stop_sig: Arc<AtomicBool>,
-    num_maps: Vec<Arc<Mutex<HashMapXX<Ubig, usize>>>>,
+    num_maps: Vec<Arc<Mutex<HashMapXX<CompressedUbig, usize>>>>,
     frontiers: Vec<Arc<Mutex<VecDeque<Ubig>>>>,
     frontier_empty_tx: Sender<(bool, usize)>,
     reduce_tx: Sender<usize>,
@@ -48,7 +51,7 @@ pub fn rabin_scott_mt(
     let mut id_state_map: HashMapXX<usize, usize> = HashMapXX::default();
 
     // Variables belonging to threads
-    let num_maps: Vec<Arc<Mutex<HashMapXX<Ubig, usize>>>> = (0..n_threads)
+    let num_maps: Vec<Arc<Mutex<HashMapXX<CompressedUbig, usize>>>> = (0..n_threads)
         .map(|_| Arc::new(Mutex::new(HashMapXX::default())))
         .collect();
     let frontier_c: Vec<Arc<Mutex<VecDeque<Ubig>>>> = (0..n_threads)
@@ -77,7 +80,7 @@ pub fn rabin_scott_mt(
     num_maps[start_hash]
         .lock()
         .unwrap()
-        .insert(start_state.clone(), 0);
+        .insert(start_state.clone().compress(), 0);
     frontier_c[start_hash]
         .lock()
         .unwrap()
@@ -202,20 +205,26 @@ fn rabin_scott_worker_mt_explore_loop(
                 tm.aut.add_state(&tm.transition_arr, &mut new_s, *t);
             });
         }
+        let compressed_new_s = new_s.clone().compress();
         // Get hashes for given state and new state
         let hash_next = get_hash(&next, tm.n_threads);
         let hash_new = get_hash(&new_s, tm.n_threads);
 
         // Get shared num mapper HashMap and perform ops on shared memory.
         let mut num_map_new = tm.num_maps[hash_new].lock().unwrap();
-        let is_new = !num_map_new.contains_key(&new_s);
+        let is_new = !num_map_new.contains_key(&compressed_new_s);
         if is_new {
-            num_map_new.insert(new_s.clone(), get_new_id());
+            num_map_new.insert(compressed_new_s.clone(), get_new_id());
         }
-        let id_new = *num_map_new.get(&new_s).unwrap();
+        let id_new = *num_map_new.get(&compressed_new_s).unwrap();
         drop(num_map_new);
 
-        let id_next = *tm.num_maps[hash_next].lock().unwrap().get(&next).unwrap();
+        let next_compressed = next.clone().compress();
+        let id_next = *tm.num_maps[hash_next]
+            .lock()
+            .unwrap()
+            .get(&next_compressed)
+            .unwrap();
         local_transitions.push((id_next, a, id_new));
         if is_new {
             for s in new_s.get_seq().iter() {

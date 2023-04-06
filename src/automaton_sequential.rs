@@ -5,7 +5,10 @@ use std::{
     hash::BuildHasherDefault,
 };
 
-use crate::{automaton::Automaton, ubig::Ubig};
+use crate::{
+    automaton::Automaton,
+    ubig::{CompressedUbig, Ubig},
+};
 
 type HashMapXX<K, V> = HashMap<K, V, BuildHasherDefault<Hasher64>>;
 
@@ -112,7 +115,7 @@ pub fn rabin_scott_seq(
     // Rabin Scott Superset Construction Algorithm
     let mut transitions: Vec<(usize, usize, usize)> = Vec::new(); // All DFA transitions
     let mut accept_states: Vec<usize> = Vec::new(); // All accept states
-    let mut num_mapper: HashMapXX<Ubig, usize> = HashMapXX::default();
+    let mut num_mapper: HashMapXX<CompressedUbig, usize> = HashMapXX::default();
     let mut frontier: VecDeque<Ubig> = VecDeque::new();
 
     // Select start state from all start states in the non deterministic automata.
@@ -127,7 +130,7 @@ pub fn rabin_scott_seq(
             break;
         }
     }
-    num_mapper.insert(start_state.clone(), num_mapper.len());
+    num_mapper.insert(start_state.clone().compress(), num_mapper.len());
     frontier.push_back(start_state.clone());
 
     // Graph exploration - Depth-first search
@@ -139,9 +142,10 @@ pub fn rabin_scott_seq(
                     aut.add_state(&transition_arr, &mut new_s, *t);
                 })
             });
+            let compressed_new_s = new_s.clone().compress();
 
-            if !num_mapper.contains_key(&new_s) {
-                num_mapper.insert(new_s.clone(), num_mapper.len());
+            if !num_mapper.contains_key(&compressed_new_s) {
+                num_mapper.insert(compressed_new_s.clone(), num_mapper.len());
                 for s in &aut.end {
                     if new_s.bit_at(s) {
                         accept_states.push(num_mapper.len() - 1);
@@ -150,10 +154,11 @@ pub fn rabin_scott_seq(
                 }
                 frontier.push_back(new_s.clone());
             }
+            let next_compressed = next.clone().compress();
             transitions.push((
-                *num_mapper.get(&next).unwrap(),
+                *num_mapper.get(&next_compressed).unwrap(),
                 a,
-                *num_mapper.get(&new_s).unwrap(),
+                *num_mapper.get(&compressed_new_s).unwrap(),
             ));
         });
     }
